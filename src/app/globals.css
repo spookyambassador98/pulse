@@ -1,26 +1,189 @@
 @import "tailwindcss";
 
+/* ============================================================
+   PULSE — design tokens
+   Dark stage is the primary theme (diagnostic monitor at night).
+   Light theme is "x-ray paper", not a naive inversion.
+   ============================================================ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #06070a;
+  --bg-raised: #0b0d12;
+  --ink: #eef1ec;
+  --ink-dim: #9aa39c;
+  --line: rgba(238, 241, 236, 0.12);
+  --line-strong: rgba(238, 241, 236, 0.22);
+  --signal: #baff29;
+  --signal-dim: rgba(186, 255, 41, 0.35);
+  --alert: #ff4d3d;
+  --alert-dim: rgba(255, 77, 61, 0.35);
+  --grain-opacity: 0.05;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-liquid: cubic-bezier(0.76, 0, 0.24, 1);
+  --ease-elastic: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f2f0e8;
+  --bg-raised: #e9e6da;
+  --ink: #0a0b0d;
+  --ink-dim: #55584f;
+  --line: rgba(10, 11, 13, 0.12);
+  --line-strong: rgba(10, 11, 13, 0.24);
+  --signal: #4f7a00;
+  --signal-dim: rgba(79, 122, 0, 0.3);
+  --alert: #c73524;
+  --alert-dim: rgba(199, 53, 36, 0.3);
+  --grain-opacity: 0.035;
+
+  color-scheme: light;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-bg-raised: var(--bg-raised);
+  --color-ink: var(--ink);
+  --color-ink-dim: var(--ink-dim);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-signal: var(--signal);
+  --color-signal-dim: var(--signal-dim);
+  --color-alert: var(--alert);
+  --color-alert-dim: var(--alert-dim);
+
+  --font-display: var(--font-space-grotesk);
+  --font-accent: var(--font-newsreader);
+  --font-mono: var(--font-plex-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--line);
+}
+
+html {
+  background: var(--bg);
+  scroll-behavior: auto; /* Lenis / ScrollTrigger own smoothing */
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  overflow-x: clip;
+  cursor: none;
+}
+
+@media (pointer: coarse) {
+  body {
+    cursor: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    cursor: auto;
+  }
+}
+
+::selection {
+  background: var(--signal);
+  color: var(--bg);
+}
+
+/* ---- ECG graph-paper backdrop ---- */
+.ecg-grid {
+  background-image: linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: -1px -1px;
+}
+
+/* ---- film grain overlay ---- */
+.grain {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  opacity: var(--grain-opacity);
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain-shift 1s steps(4) infinite;
+}
+
+@keyframes grain-shift {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-2%, 2%); }
+  50% { transform: translate(2%, -1%); }
+  75% { transform: translate(-1%, -2%); }
+  100% { transform: translate(0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grain {
+    animation: none;
+  }
+}
+
+/* ---- numbered section label ---- */
+.panel-index {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.hairline {
+  height: 1px;
+  background: var(--line);
+}
+
+/* ---- custom cursor ---- */
+.cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--signal);
+  mix-blend-mode: difference;
+  pointer-events: none;
+  z-index: 100;
+  will-change: transform;
+  transform: translate(-50%, -50%);
+}
+
+.cursor-label {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bg);
+  background: var(--signal);
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .cursor-dot,
+  .cursor-label {
+    display: none;
+  }
+}
+
+/* ---- gooey filter host (defs live in an inline svg) ---- */
+.goo {
+  filter: url(#goo);
 }
