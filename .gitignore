@@ -44,3 +44,4 @@ node_modules
 screens/
 *.log
 .env*.local
+.vercel
