@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { gsap } from "@/lib/motion/gsap";
-import { PulseTrace } from "./PulseTrace";
+import { SpikeTrain } from "./SpikeTrain";
 
 type Mode = "demo" | "typical";
 
@@ -10,8 +10,8 @@ const DATA: Record<
   Mode,
   { ttfb: string; total: string; requests: string; rhythm: string; variant: "healthy" | "alert" }
 > = {
-  demo: { ttfb: "180ms", total: "640ms", requests: "12", rhythm: "STEADY", variant: "healthy" },
-  typical: { ttfb: "890ms", total: "2.4s", requests: "47", rhythm: "ARRHYTHMIC", variant: "alert" },
+  demo: { ttfb: "180ms", total: "640ms", requests: "12", rhythm: "FIRING STEADY", variant: "healthy" },
+  typical: { ttfb: "890ms", total: "2.4s", requests: "47", rhythm: "MISFIRING", variant: "alert" },
 };
 
 // 04 COMPARE — a gooey tab switch (two blobs fused under an SVG blur filter,
@@ -89,7 +89,7 @@ export function CompareSection() {
 
       <div className="grid md:grid-cols-[1fr_auto] gap-10 md:gap-20 items-end">
         <div className="h-[26vh] md:h-[32vh] relative">
-          <PulseTrace
+          <SpikeTrain
             key={mode}
             variant={data.variant}
             seed={mode === "demo" ? 3 : 9}
@@ -111,7 +111,7 @@ export function CompareSection() {
         className="mt-8 panel-index"
         style={{ color: mode === "demo" ? "var(--signal)" : "var(--alert)" }}
       >
-        RHYTHM: {data.rhythm}
+        SIGNAL: {data.rhythm}
       </div>
     </section>
   );

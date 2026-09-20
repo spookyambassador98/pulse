@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { gsap } from "@/lib/motion/gsap";
 import { usePrefersReducedMotion } from "@/lib/motion/usePrefersReducedMotion";
-import { PulseTrace } from "./PulseTrace";
+import { SpikeTrain } from "./SpikeTrain";
 
 const BEATS = [
   {
@@ -115,7 +115,7 @@ export function TraceSection() {
           <BeatCard key={beat.n} {...beat} wide />
         ))}
       </div>
-      <PulseTrace
+      <SpikeTrain
         variant="healthy"
         seed={11}
         width={2200}

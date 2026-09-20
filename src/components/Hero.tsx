@@ -4,17 +4,18 @@ import { useEffect, useRef } from "react";
 import { gsap } from "@/lib/motion/gsap";
 import { usePrefersReducedMotion } from "@/lib/motion/usePrefersReducedMotion";
 import { KineticHeadline } from "./KineticHeadline";
-import { PulseTrace } from "./PulseTrace";
+import { NeuronDiagram } from "./NeuronDiagram";
 import { MagneticButton } from "./MagneticButton";
 
 interface HeroProps {
   ready: boolean;
+  onOpenMonitor: () => void;
 }
 
 // 01 SIGNAL — the diagnostic monitor's main screen. On scroll it "pours"
 // into the page: scales down, blurs, and its two lines drift apart before
 // section 02 pins in underneath.
-export function Hero({ ready }: HeroProps) {
+export function Hero({ ready, onOpenMonitor }: HeroProps) {
   const sectionRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const reducedMotion = usePrefersReducedMotion();
@@ -70,27 +71,20 @@ export function Hero({ ready }: HeroProps) {
         </KineticHeadline>
 
         <p className="font-mono text-sm md:text-base text-ink-dim max-w-md mt-8">
-          Pulse translates raw traffic between the two into a heartbeat you
-          read at a glance — steady when it&apos;s healthy, erratic the
-          moment it isn&apos;t.
+          Your device is a neuron. Their server is another. Pulse watches the
+          axon between them — a steady firing rate when it&apos;s healthy,
+          misfires the moment it isn&apos;t.
         </p>
 
         <div className="mt-10">
-          <MagneticButton variant="solid" cursorLabel="Watch ↗">
-            Watch it diagnose ↗
+          <MagneticButton variant="solid" cursorLabel="Watch ↗" onClick={onOpenMonitor}>
+            Watch it live ↗
           </MagneticButton>
         </div>
       </div>
 
-      <div className="relative h-[16vh] md:h-[20vh] border-t border-line">
-        <PulseTrace
-          variant="healthy"
-          seed={3}
-          width={1600}
-          height={220}
-          color="var(--signal)"
-          className="w-full h-full"
-        />
+      <div className="relative h-[30vh] md:h-[34vh] border-t border-line">
+        <NeuronDiagram variant="healthy" className="w-full h-full" />
       </div>
     </section>
   );

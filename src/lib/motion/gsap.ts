@@ -7,12 +7,13 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SplitText } from "gsap/SplitText";
 import { Observer } from "gsap/Observer";
 import { CustomEase } from "gsap/CustomEase";
+import { MotionPathPlugin } from "gsap/MotionPathPlugin";
 
 let registered = false;
 
 export function registerGsap() {
   if (registered || typeof window === "undefined") return;
-  gsap.registerPlugin(ScrollTrigger, SplitText, Observer, CustomEase);
+  gsap.registerPlugin(ScrollTrigger, SplitText, Observer, CustomEase, MotionPathPlugin);
 
   CustomEase.create("pulse-out", "0.16, 1, 0.3, 1");
   CustomEase.create("pulse-liquid", "0.76, 0, 0.24, 1");
@@ -27,4 +28,4 @@ export function registerGsap() {
 // inside a top-level provider's effect is too late for children like Hero.
 registerGsap();
 
-export { gsap, ScrollTrigger, SplitText, Observer, CustomEase };
+export { gsap, ScrollTrigger, SplitText, Observer, CustomEase, MotionPathPlugin };

@@ -93,12 +93,49 @@ body {
   color: var(--bg);
 }
 
-/* ---- ECG graph-paper backdrop ---- */
-.ecg-grid {
-  background-image: linear-gradient(var(--line) 1px, transparent 1px),
+/* ---- neural mesh backdrop: faint grid + a node at every intersection,
+   reading as a sparse network rather than graph paper ---- */
+.mesh-grid {
+  background-image: radial-gradient(circle, var(--line-strong) 1px, transparent 1.6px),
+    linear-gradient(var(--line) 1px, transparent 1px),
     linear-gradient(90deg, var(--line) 1px, transparent 1px);
-  background-size: 48px 48px;
-  background-position: -1px -1px;
+  background-size:
+    48px 48px,
+    48px 48px,
+    48px 48px;
+  background-position:
+    -1px -1px,
+    -1px -1px,
+    -1px -1px;
+}
+
+/* ---- traveling scan highlight for spike-train rasters ---- */
+.spike-sweep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -14%;
+  width: 14%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--sweep-color, var(--signal)), transparent);
+  opacity: 0.5;
+  mix-blend-mode: screen;
+  animation: spike-sweep-move 3.6s linear infinite;
+}
+
+@keyframes spike-sweep-move {
+  from {
+    left: -14%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spike-sweep {
+    display: none;
+  }
 }
 
 /* ---- film grain overlay ---- */

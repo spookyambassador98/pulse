@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { gsap } from "@/lib/motion/gsap";
 import { usePrefersReducedMotion } from "@/lib/motion/usePrefersReducedMotion";
 import { KineticHeadline } from "./KineticHeadline";
-import { PulseTrace } from "./PulseTrace";
+import { SpikeTrain } from "./SpikeTrain";
 
 const SYMPTOMS = [
   { left: "14%", label: "CORS blocked", detail: "Preflight rejected — origin never got a foot in the door." },
@@ -96,7 +96,7 @@ export function DiagnosisSection() {
       </KineticHeadline>
 
       <div className="relative mt-16 md:mt-24 h-[36vh] md:h-[42vh]">
-        <PulseTrace
+        <SpikeTrain
           variant="healthy"
           seed={5}
           width={1600}
@@ -105,7 +105,7 @@ export function DiagnosisSection() {
           className="absolute inset-0 w-full h-full opacity-70"
         />
         <div ref={alertRef} className="absolute inset-0 w-full h-full">
-          <PulseTrace
+          <SpikeTrain
             variant="alert"
             seed={9}
             width={1600}
