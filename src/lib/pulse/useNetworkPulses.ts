@@ -1,12 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 // Real per-request network activity, turned into discrete "packet" events —
 // one for the request leaving your device, one for the response coming
-// back. This is the finest granularity a browser exposes to JS (raw TCP/IP
-// packets aren't visible to any web page, by design) — but it's the same
-// data the DevTools Network tab is built on, and it's genuinely live.
+// back.
+//
+// In the browser this is the finest granularity a web page can see (raw
+// TCP/IP packets and other tabs are sandboxed away, by design) — it's the
+// same data the DevTools Network tab is built on.
+//
+// Running inside the Pulse desktop shell (Electron), this same hook
+// switches to a strictly deeper data source exposed by the main process via
+// `window.pulseDesktop`: the OS's actual connection table (every established
+// connection on the machine, with the owning process) and a raw TCP
+// handshake for "connect to any host" — no browser sandbox in the way.
 
 export interface PacketEvent {
   id: string;
@@ -24,6 +32,47 @@ export interface ConnectionInfo {
   requestCount: number;
   lastActivityMs: number;
   manual: boolean;
+  /** e.g. a real owning process name in desktop mode ("chrome.exe"). */
+  meta?: string;
+}
+
+interface DesktopConnection {
+  remote: string;
+  port: number;
+  process: string | null;
+  pid: number | null;
+  protocol: string;
+}
+
+interface PulseDesktopBridge {
+  isDesktop: true;
+  onNetworkSnapshot: (cb: (data: { at: number; connections: DesktopConnection[] }) => void) => () => void;
+  connectTo: (host: string) => Promise<{ ok: boolean; ms: number; host: string; reason?: string }>;
+  reverseDns: (ip: string) => Promise<string | null>;
+}
+
+function getDesktopBridge(): PulseDesktopBridge | null {
+  if (typeof window === "undefined") return null;
+  const bridge = (window as unknown as { pulseDesktop?: PulseDesktopBridge }).pulseDesktop;
+  return bridge?.isDesktop ? bridge : null;
+}
+
+/** True when running inside the Pulse Electron shell rather than a plain browser tab. */
+function isPulseDesktop(): boolean {
+  return getDesktopBridge() !== null;
+}
+
+function subscribeNever() {
+  return () => {};
+}
+
+function serverSnapshot() {
+  return false;
+}
+
+/** Render-safe check for the Electron shell — never changes after load, so no subscription is needed. */
+export function useIsPulseDesktop(): boolean {
+  return useSyncExternalStore(subscribeNever, isPulseDesktop, serverSnapshot);
 }
 
 const MAX_EVENTS = 60;
@@ -84,12 +133,12 @@ export function useNetworkPulses(active: boolean) {
     [nextId]
   );
 
-  const upsertConnection = useCallback((host: string, ok: boolean, manual: boolean) => {
+  const upsertConnection = useCallback((host: string, ok: boolean, manual: boolean, meta?: string) => {
     setConnections((prev) => {
       const idx = prev.findIndex((c) => c.host === host);
       const now = performance.now();
       if (idx === -1) {
-        return [...prev, { host, variant: ok ? "healthy" : "alert", requestCount: 1, lastActivityMs: now, manual }];
+        return [...prev, { host, variant: ok ? "healthy" : "alert", requestCount: 1, lastActivityMs: now, manual, meta }];
       }
       const next = [...prev];
       next[idx] = {
@@ -98,17 +147,55 @@ export function useNetworkPulses(active: boolean) {
         requestCount: next[idx].requestCount + 1,
         lastActivityMs: now,
         manual: next[idx].manual || manual,
+        meta: meta ?? next[idx].meta,
       };
       return next;
     });
   }, []);
 
-  // Seed with whatever this page already loaded, then watch for every new
-  // request in real time via PerformanceObserver. `buffered: true` replays
-  // already-finished requests through the same callback, so every setState
-  // call below happens inside a callback rather than the effect body itself.
+  // Desktop shell: the main process pushes real, system-wide connection
+  // snapshots (every established connection on the machine, from any
+  // process) every ~1.2s. A remote address that's new since the last
+  // snapshot fires an "out" pulse (its SYN); one that's still present
+  // fires an "in" pulse (still alive) so the diagram stays visibly live.
   useEffect(() => {
     if (!active) return;
+    const bridge = getDesktopBridge();
+    if (!bridge) return;
+
+    const lastSeen = new Map<string, number>();
+
+    const unsubscribe = bridge.onNetworkSnapshot(({ connections: conns }) => {
+      const now = performance.now();
+      for (const c of conns) {
+        const key = `${c.remote}:${c.port}`;
+        const isNew = !lastSeen.has(key);
+        lastSeen.set(key, now);
+        const meta = c.process ? `${c.process}${c.pid ? ` (${c.pid})` : ""}` : undefined;
+
+        upsertConnection(c.remote, true, false, meta);
+        pushEvent({
+          host: c.remote,
+          kind: isNew ? "out" : "in",
+          ok: true,
+          atMs: now,
+          label: isNew
+            ? `SYN → :${c.port}${c.process ? ` · ${c.process}` : ""}`
+            : `${c.protocol.toUpperCase()} alive · :${c.port}`,
+        });
+      }
+    });
+
+    return unsubscribe;
+  }, [active, pushEvent, upsertConnection]);
+
+  // Browser fallback: seed with whatever this page already loaded, then
+  // watch for every new request in real time via PerformanceObserver.
+  // `buffered: true` replays already-finished requests through the same
+  // callback, so every setState call below happens inside a callback
+  // rather than the effect body itself.
+  useEffect(() => {
+    if (!active || getDesktopBridge()) return;
 
     // The document itself isn't a "resource" entry — seed it via a deferred
     // callback (matching the pattern below) rather than calling setState
@@ -173,20 +260,46 @@ export function useNetworkPulses(active: boolean) {
     return () => window.clearInterval(id);
   }, [active]);
 
-  // Lets the visitor point Pulse at any host: a real fetch leaves this
-  // browser right now, timed for real, in `no-cors` mode so it works
-  // cross-origin without needing to read the response body.
+  // Lets the visitor point Pulse at any host. Desktop mode opens a real raw
+  // TCP socket and times the actual three-way handshake (SYN / SYN-ACK /
+  // ACK) — the browser fallback times a real `fetch` in `no-cors` mode,
+  // which works cross-origin without needing to read the response body.
   const connectTo = useCallback(
     (rawHost: string) => {
       const host = normalizeHost(rawHost);
       if (!host) return;
+
+      const bridge = getDesktopBridge();
 
       manualCooldown.current.set(host, performance.now() + 5000);
       setConnectingHost(host);
       upsertConnection(host, true, true);
 
       const t0 = performance.now();
-      pushEvent({ host, kind: "out", ok: true, atMs: t0, label: `GET https://${host}/` });
+      pushEvent({
+        host,
+        kind: "out",
+        ok: true,
+        atMs: t0,
+        label: bridge ? "SYN → :443" : `GET https://${host}/`,
+      });
+
+      if (bridge) {
+        bridge
+          .connectTo(host)
+          .then((res) => {
+            const t1 = performance.now();
+            if (res.ok) {
+              pushEvent({ host, kind: "in", ok: true, atMs: t1, durationMs: res.ms, label: `SYN-ACK · ${res.ms}ms` });
+              upsertConnection(host, true, true);
+            } else {
+              pushEvent({ host, kind: "in", ok: false, atMs: t1, durationMs: res.ms, label: res.reason || "unreachable" });
+              upsertConnection(host, false, true);
+            }
+          })
+          .finally(() => setConnectingHost(null));
+        return;
+      }
 
       fetch(`https://${host}/`, {
         mode: "no-cors",

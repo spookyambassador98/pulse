@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ConsentGate } from "./ConsentGate";
 import { LiveNeuronNetwork } from "./LiveNeuronNetwork";
 import { useLiveSession } from "@/lib/pulse/useLiveSession";
+import { useIsPulseDesktop } from "@/lib/pulse/useNetworkPulses";
 
 type Stage = "consent" | "connecting" | "live";
 
@@ -20,6 +21,7 @@ export function MonitorWindow({ open, onClose }: MonitorWindowProps) {
   const [stage, setStage] = useState<Stage>("consent");
   const [elapsedDs, setElapsedDs] = useState(0); // deciseconds
   const { data } = useLiveSession(stage === "live");
+  const isDesktop = useIsPulseDesktop();
   const hostname = typeof window !== "undefined" ? window.location.hostname : "this device";
 
   useEffect(() => {
@@ -69,7 +71,14 @@ export function MonitorWindow({ open, onClose }: MonitorWindowProps) {
             <span className="w-2.5 h-2.5 rounded-full bg-signal/70" />
             <span className="w-2.5 h-2.5 rounded-full border border-line-strong" />
           </div>
-          <div className="panel-index truncate px-2">PULSE — LIVE SESSION MONITOR</div>
+          <div className="panel-index truncate px-2 flex items-center gap-2">
+            PULSE — LIVE SESSION MONITOR
+            {isDesktop && (
+              <span className="text-signal border border-signal/40 rounded-full px-2 py-0.5 text-[0.6rem] tracking-[0.1em]">
+                DESKTOP · SYSTEM-WIDE
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -82,14 +91,19 @@ export function MonitorWindow({ open, onClose }: MonitorWindowProps) {
 
         <div className="flex-1 relative overflow-hidden">
           {stage === "consent" && (
-            <ConsentGate hostname={hostname} onAllow={() => setStage("connecting")} onDeny={onClose} />
+            <ConsentGate
+              hostname={hostname}
+              desktop={isDesktop}
+              onAllow={() => setStage("connecting")}
+              onDeny={onClose}
+            />
           )}
 
           {stage === "connecting" && (
             <div className="flex flex-col items-center justify-center h-full gap-4">
               <span className="w-10 h-10 rounded-full border-2 border-line-strong border-t-signal animate-spin" />
               <span className="font-mono text-xs tracking-[0.2em] text-signal uppercase">
-                Connecting to {hostname}…
+                {isDesktop ? "Reading device connection table…" : `Connecting to ${hostname}…`}
               </span>
             </div>
           )}

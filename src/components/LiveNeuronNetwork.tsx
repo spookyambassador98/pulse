@@ -150,7 +150,7 @@ export function LiveNeuronNetwork({ active }: LiveNeuronNetworkProps) {
                 />
                 <text
                   x={target.cx}
-                  y={target.cy - target.r - 10}
+                  y={target.cy - target.r - (conn.meta ? 24 : 10)}
                   textAnchor="middle"
                   className="font-mono"
                   fontSize={11}
@@ -158,6 +158,18 @@ export function LiveNeuronNetwork({ active }: LiveNeuronNetworkProps) {
                 >
                   {conn.host}
                 </text>
+                {conn.meta && (
+                  <text
+                    x={target.cx}
+                    y={target.cy - target.r - 10}
+                    textAnchor="middle"
+                    className="font-mono"
+                    fontSize={10}
+                    fill="var(--signal)"
+                  >
+                    {conn.meta}
+                  </text>
+                )}
               </g>
             );
           })}
