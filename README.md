@@ -2,21 +2,21 @@
 
 Live: [pulse-beryl-one.vercel.app](https://pulse-beryl-one.vercel.app)
 
-Pulse turns the traffic between your device and this page into a readable heartbeat. TTFB, resource timing, connection type, and transfer size come from the browser’s Navigation Timing, Resource Timing, and Network Information APIs — not mock numbers. Nothing is sent off-device.
+Pulse is a free Windows instrument: a live neuron map of real device traffic. The website is the download plate. The app is the map.
 
-The page is a diagnostic monitor: device → neuron → site. A healthy session breathes. A stall looks like arrhythmia.
+- Installer: [Pulse-Setup-0.1.0.exe](https://github.com/spookyambassador98/pulse/releases/latest/download/Pulse-Setup-0.1.0.exe)
+- Packet capture: [Npcap](https://npcap.com/#download)
+- Windows SmartScreen will warn on an unsigned build — More info → Run anyway
 
 ## Stack
 
 - Next.js 16 (App Router) + React 19 + TypeScript
-- GSAP (ScrollTrigger, SplitText) + Lenis
-- OGL shader field for the stage
+- Electron shell, Npcap (`cap`), systeminformation
+- GSAP MotionPath on the desktop map
 
 ## Run
 
 ```bash
 npm install
-npm run dev
+npm run electron
 ```
-
-Open [http://localhost:3000](http://localhost:3000).

@@ -1,20 +1,13 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, Newsreader, IBM_Plex_Mono } from "next/font/google";
+import { Syne, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { Grain } from "@/components/Grain";
-import { GooDefs } from "@/components/GooDefs";
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
+const syne = Syne({
+  variable: "--font-site",
   subsets: ["latin"],
   display: "swap",
-});
-
-const newsreader = Newsreader({
-  variable: "--font-newsreader",
-  subsets: ["latin"],
-  style: ["italic"],
-  display: "swap",
+  weight: ["500", "600", "700", "800"],
 });
 
 const plexMono = IBM_Plex_Mono({
@@ -25,13 +18,12 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pulse — the heartbeat of a web session",
+  title: "Pulse — Windows installer",
   description:
-    "Pulse translates raw traffic between your device and a target site into a live, human-readable heartbeat. Watch a session breathe — or flatline.",
+    "Free Windows app. A live neuron map of real device traffic. Download Pulse-Setup.",
+  applicationName: "Pulse",
 };
 
-// Runs before hydration to avoid a theme flash. Reads a previously
-// stored preference; defaults to the dark stage (primary theme).
 const themeInitScript = `
 (function() {
   try {
@@ -52,13 +44,12 @@ export default function RootLayout({
       lang="en"
       data-theme="dark"
       suppressHydrationWarning
-      className={`${spaceGrotesk.variable} ${newsreader.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${syne.variable} ${plexMono.variable} h-full antialiased`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-full flex flex-col bg-bg text-ink">
-        <GooDefs />
         {children}
         <Grain />
       </body>

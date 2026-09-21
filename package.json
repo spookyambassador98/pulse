@@ -1,7 +1,10 @@
 {
   "name": "pulse",
   "version": "0.1.0",
+  "description": "Pulse — a live, neuron-style visualization of your device's real network activity.",
+  "author": "Dr.",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,7 +12,9 @@
     "lint": "eslint",
     "electron": "npm run build && electron electron/main.js",
     "electron:admin": "npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-elevated.ps1",
-    "rebuild-native": "electron-rebuild -f -w cap"
+    "rebuild-native": "npx electron-rebuild -f -w cap",
+    "make-icon": "node scripts/make-icon.mjs",
+    "dist:win": "npm run make-icon && npm run build && electron-builder --win nsis"
   },
   "dependencies": {
     "gsap": "^3.15.0",
@@ -24,15 +29,72 @@
     "cap": "^0.2.1"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.2.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "png-to-ico": "^3.0.1",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "build": {
+    "appId": "com.pulse.desktop",
+    "productName": "Pulse",
+    "copyright": "Copyright © 2026 Pulse",
+    "directories": {
+      "output": "release"
+    },
+    "asar": false,
+    "npmRebuild": false,
+    "files": [
+      "electron/**/*",
+      "resources/icon.ico",
+      "package.json",
+      "next.config.ts",
+      "public/**/*",
+      ".next/**/*",
+      "!.next/cache/**/*",
+      "node_modules/**/*",
+      "!node_modules/typescript/**/*",
+      "!node_modules/eslint*/**/*",
+      "!node_modules/@eslint*/**/*",
+      "!node_modules/tailwindcss/**/*",
+      "!node_modules/@tailwindcss/**/*",
+      "!node_modules/electron-builder/**/*",
+      "!node_modules/electron/dist/**/*",
+      "!node_modules/@electron/**/*",
+      "!node_modules/png-to-ico/**/*",
+      "!node_modules/.cache/**/*",
+      "!src/**/*",
+      "!scripts/**/*",
+      "!shots/**/*",
+      "!*.log"
+    ],
+    "win": {
+      "icon": "resources/icon.ico",
+      "executableName": "Pulse",
+      "target": ["nsis"],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "license": "resources/license.txt",
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pulse",
+      "uninstallDisplayName": "Pulse",
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "installerHeaderIcon": "resources/icon.ico",
+      "runAfterFinish": true,
+      "artifactName": "Pulse-Setup-${version}.${ext}"
+    }
   }
 }

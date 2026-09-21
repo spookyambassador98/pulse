@@ -7,4 +7,4 @@ Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorA
 Start-Sleep -Milliseconds 500
 Remove-Item "C:\Users\bakuw\Desktop\pulse\crash.log" -ErrorAction SilentlyContinue
 $electronExe = "C:\Users\bakuw\Desktop\pulse\node_modules\electron\dist\electron.exe"
-Start-Process -FilePath $electronExe -ArgumentList "electron\main.js", "--remote-debugging-port=9333" -WorkingDirectory "C:\Users\bakuw\Desktop\pulse"
+Start-Process -FilePath $electronExe -ArgumentList "electron\main.js","--remote-debugging-port=9333" -WorkingDirectory "C:\Users\bakuw\Desktop\pulse"

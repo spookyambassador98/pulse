@@ -1,0 +1,17 @@
+PULSE for Windows
+
+This installer is not code-signed. Windows SmartScreen may show
+"Windows protected your PC". That warning means the publisher is
+unknown, not that the file was classified as malware.
+
+Choose More info, then Run anyway, if you got the file from the
+Pulse site or this project's GitHub releases.
+
+Pulse reads local network connections on this machine. Optional
+administrator mode can show process paths and disconnect a destination
+at the OS (Windows Firewall rule + TCP reset). Pulse does not install
+a kernel driver. Live packet impulses use Npcap when it is present:
+
+https://npcap.com
+
+Source: https://github.com/spookyambassador98/pulse

@@ -39,14 +39,26 @@ export interface ConnectionInfo {
   manual: boolean;
   /** e.g. a real owning process name in desktop mode ("chrome.exe"). */
   meta?: string;
+  pid?: number | null;
+  process?: string;
+  processPath?: string;
+  port?: number;
+  blocked?: boolean;
+  href?: string | null;
 }
 
 interface DesktopConnection {
   remote: string;
   port: number;
+  localAddress?: string | null;
+  localPort?: number;
   process: string | null;
+  processPath?: string | null;
   pid: number | null;
   protocol: string;
+  name?: string | null;
+  blocked?: boolean;
+  href?: string | null;
 }
 
 interface RawPacket {
@@ -67,15 +79,40 @@ interface CaptureStatus {
 
 interface PulseDesktopBridge {
   isDesktop: true;
-  onNetworkSnapshot: (cb: (data: { at: number; connections: DesktopConnection[] }) => void) => () => void;
+  onNetworkSnapshot: (cb: (data: { at: number; elevated?: boolean; connections: DesktopConnection[] }) => void) => () => void;
   onPacket: (cb: (data: RawPacket) => void) => () => void;
   onCaptureStatus: (cb: (data: CaptureStatus) => void) => () => void;
   getCaptureStatus: () => Promise<CaptureStatus>;
-  connectTo: (host: string) => Promise<{ ok: boolean; ms: number; host: string; address?: string; reason?: string }>;
+  connectTo: (
+    host: string,
+    port?: number
+  ) => Promise<{ ok: boolean; ms: number; host: string; port?: number; address?: string; reason?: string }>;
   reverseDns: (ip: string) => Promise<string | null>;
+  setFullscreen: (on: boolean) => Promise<{ fullscreen: boolean }>;
+  getPrivilege: () => Promise<{ elevated: boolean }>;
+  requestElevation: () => Promise<{ elevated: boolean; relaunching?: boolean; reason?: string }>;
+  toggleNode: (
+    ip: string,
+    enabled: boolean
+  ) => Promise<{ ok: boolean; blocked?: boolean; reason?: string; service?: string | null; closed?: number }>;
+  openDestination: (href: string) => Promise<{ ok: boolean; reason?: string }>;
+  revealPath: (filePath: string) => Promise<{ ok: boolean; reason?: string }>;
 }
 
 const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+function nameRank(n?: string | null) {
+  if (!n) return 0;
+  if (IPV4_RE.test(n)) return 1;
+  if (n === "LAN" || n === "link-local" || n === "loopback") return 2;
+  return 3;
+}
+
+function pickName(current?: string, incoming?: string | null) {
+  if (!incoming) return current;
+  if (!current) return incoming;
+  return nameRank(incoming) >= nameRank(current) ? incoming : current;
+}
 
 function getDesktopBridge(): PulseDesktopBridge | null {
   if (typeof window === "undefined") return null;
@@ -123,14 +160,18 @@ function shortPath(url: string): string {
   }
 }
 
-/** Accepts "google.com", "www.google.com", or a full URL; returns just the hostname. */
-function normalizeHost(input: string): string | null {
+/** Accepts "google.com", a full URL, or "host:port"; returns hostname + optional port. */
+function parseTarget(input: string): { host: string; port?: number } | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
   try {
     const withProtocol = trimmed.includes("://") ? trimmed : `https://${trimmed}`;
-    const host = new URL(withProtocol).hostname.toLowerCase();
-    return host || null;
+    const u = new URL(withProtocol);
+    const host = u.hostname.toLowerCase();
+    if (!host) return null;
+    if (u.port) return { host, port: Number(u.port) };
+    if (trimmed.includes("://") && u.protocol === "http:") return { host, port: 80 };
+    return { host };
   } catch {
     return null;
   }
@@ -138,9 +179,11 @@ function normalizeHost(input: string): string | null {
 
 export function useNetworkPulses(active: boolean) {
   const [connections, setConnections] = useState<ConnectionInfo[]>([]);
+  const connectionsRef = useRef<ConnectionInfo[]>([]);
   const [events, setEvents] = useState<PacketEvent[]>([]);
   const [connectingHost, setConnectingHost] = useState<string | null>(null);
   const [capture, setCapture] = useState<CaptureStatus>({ active: false });
+  const [elevated, setElevated] = useState(false);
   const idRef = useRef(0);
   // Once real packet capture comes online, the connection-snapshot effect
   // stops inventing its own "SYN / alive" pulses — the capture stream
@@ -156,8 +199,15 @@ export function useNetworkPulses(active: boolean) {
   // and cached here — otherwise every packet from the same host would
   // trigger another lookup.
   const nameResolveState = useRef<Map<string, "pending" | "done">>(new Map());
+  // Manual connect_to uses a hostname; the OS table and packet capture speak
+  // IPs. This alias keeps them as one synapse instead of two ghosts.
+  const hostByIp = useRef<Map<string, string>>(new Map());
 
   const nextId = useCallback(() => `pk-${idRef.current++}`, []);
+
+  useEffect(() => {
+    connectionsRef.current = connections;
+  }, [connections]);
 
   const pushEvent = useCallback(
     (evt: Omit<PacketEvent, "id">) => {
@@ -170,8 +220,21 @@ export function useNetworkPulses(active: boolean) {
   );
 
   const upsertConnection = useCallback(
-    (params: { host: string; ok: boolean; manual: boolean; meta?: string; name?: string; ip?: string }) => {
-      const { host, ok, manual, meta, name, ip } = params;
+    (params: {
+      host: string;
+      ok: boolean;
+      manual: boolean;
+      meta?: string;
+      name?: string;
+      ip?: string;
+      pid?: number | null;
+      process?: string;
+      processPath?: string;
+      port?: number;
+      blocked?: boolean;
+      href?: string | null;
+    }) => {
+      const { host, ok, manual, meta, name, ip, pid, process, processPath, port, blocked, href } = params;
       setConnections((prev) => {
         const idx = prev.findIndex((c) => c.host === host);
         const now = performance.now();
@@ -182,24 +245,36 @@ export function useNetworkPulses(active: boolean) {
               host,
               name: name ?? host,
               ip,
-              variant: ok ? "healthy" : "alert",
+              variant: blocked || !ok ? "alert" : "healthy",
               requestCount: 1,
               lastActivityMs: now,
               manual,
               meta,
+              pid,
+              process,
+              processPath,
+              port,
+              blocked,
+              href,
             },
           ];
         }
         const next = [...prev];
         next[idx] = {
           ...next[idx],
-          variant: ok ? next[idx].variant : "alert",
+          variant: blocked ? "alert" : ok ? next[idx].variant : "alert",
           requestCount: next[idx].requestCount + 1,
           lastActivityMs: now,
           manual: next[idx].manual || manual,
           meta: meta ?? next[idx].meta,
-          name: name ?? next[idx].name,
+          name: pickName(next[idx].name, name) ?? next[idx].name,
           ip: ip ?? next[idx].ip,
+          pid: pid ?? next[idx].pid,
+          process: process ?? next[idx].process,
+          processPath: processPath ?? next[idx].processPath,
+          port: port ?? next[idx].port,
+          blocked: blocked ?? next[idx].blocked,
+          href: href ?? next[idx].href,
         };
         return next;
       });
@@ -208,7 +283,9 @@ export function useNetworkPulses(active: boolean) {
   );
 
   const patchConnectionName = useCallback((host: string, name: string) => {
-    setConnections((prev) => prev.map((c) => (c.host === host ? { ...c, name } : c)));
+    setConnections((prev) =>
+      prev.map((c) => (c.host === host || c.ip === host ? { ...c, name: pickName(c.name, name) ?? c.name } : c))
+    );
   }, []);
 
   // Fire a reverse-DNS lookup for a raw IP the first time it's seen, and
@@ -246,20 +323,44 @@ export function useNetworkPulses(active: boolean) {
 
     const lastSeen = new Map<string, number>();
 
-    const unsubscribe = bridge.onNetworkSnapshot(({ connections: conns }) => {
+    getDesktopBridge()
+      ?.getPrivilege()
+      .then((p) => {
+        if (p) setElevated(Boolean(p.elevated));
+      })
+      .catch(() => {});
+
+    const unsubscribe = bridge.onNetworkSnapshot(({ connections: conns, elevated: priv }) => {
+      if (typeof priv === "boolean") setElevated(priv);
       const now = performance.now();
+      const activeRemotes = new Set(conns.map((c) => c.remote));
+
       for (const c of conns) {
         const key = `${c.remote}:${c.port}`;
         const isNew = !lastSeen.has(key);
         lastSeen.set(key, now);
+        const host = hostByIp.current.get(c.remote) || c.remote;
         const meta = c.process ? `${c.process}${c.pid ? ` (${c.pid})` : ""}` : undefined;
-
-        upsertConnection({ host: c.remote, ok: true, manual: false, meta, ip: c.remote });
+        upsertConnection({
+          host,
+          ok: !c.blocked,
+          manual: false,
+          meta,
+          ip: c.remote,
+          name: c.name || undefined,
+          pid: c.pid,
+          process: c.process || undefined,
+          processPath: c.processPath || undefined,
+          port: c.port,
+          blocked: Boolean(c.blocked),
+          href: c.href || undefined,
+        });
         resolveNameIfNeeded(c.remote);
-        if (captureActiveRef.current) continue; // real packet events cover this instead
+        if (captureActiveRef.current) continue;
+        if (c.blocked) continue;
 
         pushEvent({
-          host: c.remote,
+          host,
           kind: isNew ? "out" : "in",
           ok: true,
           atMs: now,
@@ -268,6 +369,23 @@ export function useNetworkPulses(active: boolean) {
             : `${c.protocol.toUpperCase()} alive · :${c.port}`,
         });
       }
+
+      for (const key of [...lastSeen.keys()]) {
+        if (!activeRemotes.has(key.split(":")[0])) lastSeen.delete(key);
+      }
+
+      // Drop only truly stale rows. Rebuilding the whole list from the OS
+      // snapshot used to wipe packet-capture hosts (and manual connects)
+      // between polls — that's the jitter: node gone, then back on a new slot.
+      setConnections((prev) =>
+        prev.filter((c) => {
+          if (c.blocked) return true;
+          if (c.manual) return true;
+          if (activeRemotes.has(c.host)) return true;
+          if (c.ip && activeRemotes.has(c.ip)) return true;
+          return now - c.lastActivityMs < 12000;
+        })
+      );
     });
 
     return unsubscribe;
@@ -295,11 +413,17 @@ export function useNetworkPulses(active: boolean) {
     });
 
     const unsubPacket = bridge.onPacket((pkt) => {
+      if (typeof document !== "undefined" && document.hidden) return;
       const isReset = pkt.flags.includes("RST");
-      upsertConnection({ host: pkt.remoteIp, ok: !isReset, manual: false, ip: pkt.remoteIp });
+      const host = hostByIp.current.get(pkt.remoteIp) || pkt.remoteIp;
+      const blockedNow = connectionsRef.current.some(
+        (c) => c.blocked && (c.ip === pkt.remoteIp || c.host === host || c.host === pkt.remoteIp)
+      );
+      if (blockedNow) return;
+      upsertConnection({ host, ok: !isReset, manual: false, ip: pkt.remoteIp });
       resolveNameIfNeeded(pkt.remoteIp);
       pushEvent({
-        host: pkt.remoteIp,
+        host,
         kind: pkt.direction,
         ok: !isReset,
         atMs: performance.now(),
@@ -390,9 +514,20 @@ export function useNetworkPulses(active: boolean) {
   // which works cross-origin without needing to read the response body.
   const connectTo = useCallback(
     (rawHost: string) => {
-      const host = normalizeHost(rawHost);
-      if (!host) return;
+      const target = parseTarget(rawHost);
+      if (!target) {
+        setConnectingHost(null);
+        pushEvent({
+          host: rawHost.trim() || "?",
+          kind: "out",
+          ok: false,
+          atMs: performance.now(),
+          label: "invalid host",
+        });
+        return;
+      }
 
+      const { host, port } = target;
       const bridge = getDesktopBridge();
 
       manualCooldown.current.set(host, performance.now() + 5000);
@@ -400,22 +535,35 @@ export function useNetworkPulses(active: boolean) {
       upsertConnection({ host, ok: true, manual: true, name: host });
 
       const t0 = performance.now();
+      const portLabel = port ?? 443;
       pushEvent({
         host,
         kind: "out",
         ok: true,
         atMs: t0,
-        label: bridge ? "SYN → :443" : `GET https://${host}/`,
+        label: bridge ? `SYN → :${portLabel}` : `GET https://${host}/`,
       });
 
       if (bridge) {
         bridge
-          .connectTo(host)
+          .connectTo(host, port)
           .then((res) => {
             const t1 = performance.now();
+            if (res.address) {
+              const ip = res.address.replace(/^::ffff:/, "");
+              hostByIp.current.set(ip, host);
+              hostByIp.current.set(res.address, host);
+            }
             if (res.ok) {
-              pushEvent({ host, kind: "in", ok: true, atMs: t1, durationMs: res.ms, label: `SYN-ACK · ${res.ms}ms` });
-              upsertConnection({ host, ok: true, manual: true, name: host, ip: res.address });
+              pushEvent({
+                host,
+                kind: "in",
+                ok: true,
+                atMs: t1,
+                durationMs: res.ms,
+                label: `SYN-ACK :${res.port ?? portLabel} · ${res.ms}ms`,
+              });
+              upsertConnection({ host, ok: true, manual: true, name: host, ip: res.address?.replace(/^::ffff:/, "") });
             } else {
               pushEvent({ host, kind: "in", ok: false, atMs: t1, durationMs: res.ms, label: res.reason || "unreachable" });
               upsertConnection({ host, ok: false, manual: true, name: host });
@@ -425,7 +573,8 @@ export function useNetworkPulses(active: boolean) {
         return;
       }
 
-      fetch(`https://${host}/`, {
+      const url = port === 80 ? `http://${host}/` : `https://${host}/`;
+      fetch(url, {
         mode: "no-cors",
         cache: "no-store",
         signal: AbortSignal.timeout(7000),
@@ -447,5 +596,33 @@ export function useNetworkPulses(active: boolean) {
     [pushEvent, upsertConnection]
   );
 
-  return { connections, events, connectTo, connectingHost, capture };
+  const toggleNode = useCallback(async (ip: string, enabled: boolean) => {
+    const bridge = getDesktopBridge();
+    if (!bridge?.toggleNode) return { ok: false, reason: "desktop-only" };
+    const res = await bridge.toggleNode(ip, enabled);
+    if (!res.ok) return res;
+    setConnections((prev) =>
+      prev.map((c) =>
+        c.ip === ip || c.host === ip
+          ? { ...c, blocked: res.blocked ?? !enabled, variant: enabled ? "healthy" : "alert" }
+          : c
+      )
+    );
+    return res;
+  }, []);
+
+  const openDestination = useCallback(async (href: string) => {
+    const bridge = getDesktopBridge();
+    if (bridge?.openDestination) return bridge.openDestination(href);
+    window.open(href, "_blank", "noopener,noreferrer");
+    return { ok: true };
+  }, []);
+
+  const revealPath = useCallback(async (filePath: string) => {
+    const bridge = getDesktopBridge();
+    if (!bridge?.revealPath) return { ok: false, reason: "desktop-only" };
+    return bridge.revealPath(filePath);
+  }, []);
+
+  return { connections, events, connectTo, connectingHost, capture, elevated, toggleNode, openDestination, revealPath };
 }

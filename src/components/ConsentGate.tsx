@@ -5,15 +5,20 @@ interface ConsentGateProps {
   onAllow: () => void;
   onDeny: () => void;
   desktop?: boolean;
+  elevated?: boolean;
+  elevating?: boolean;
+  elevationError?: string | null;
 }
 
-// Dramatized as a permission prompt because that's exactly what it is: the
-// visitor's click is the only thing that starts reading their session.
-// In the browser, nothing here requests a real OS permission — Navigation/
-// Resource Timing and Network Information are same-origin data the page
-// already has. In the desktop shell it's more literal: the click is what
-// starts the main process's real connection-table poll.
-export function ConsentGate({ hostname, onAllow, onDeny, desktop }: ConsentGateProps) {
+export function ConsentGate({
+  hostname,
+  onAllow,
+  onDeny,
+  desktop,
+  elevated,
+  elevating,
+  elevationError,
+}: ConsentGateProps) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-6 md:px-10">
       <div className="relative w-16 h-16 mb-7">
@@ -25,7 +30,9 @@ export function ConsentGate({ hostname, onAllow, onDeny, desktop }: ConsentGateP
 
       <h3 className="font-display text-2xl md:text-4xl leading-tight max-w-lg mb-4">
         {desktop ? (
-          <>Allow Pulse to monitor <span className="text-signal">real network activity</span> on this device?</>
+          <>
+            Allow Pulse to monitor <span className="text-signal">real network activity</span> on this device?
+          </>
         ) : (
           <>
             Allow Pulse to monitor this session with <span className="text-signal">{hostname}</span>?
@@ -33,13 +40,20 @@ export function ConsentGate({ hostname, onAllow, onDeny, desktop }: ConsentGateP
         )}
       </h3>
 
-      <p className="font-mono text-xs md:text-sm text-ink-dim max-w-sm mb-9 leading-relaxed">
+      <p className="font-mono text-xs md:text-sm text-ink-dim max-w-md mb-9 leading-relaxed">
         {desktop ? (
-          <>
-            Pulse reads your OS&apos;s own connection table — every established connection on this
-            machine, with the owning process. No packet-capture driver, no admin rights, nothing
-            sent anywhere.
-          </>
+          elevated ? (
+            <>
+              Administrator is already on. Process names, exe paths, and the ability to cut a
+              connection will be visible. Nothing leaves this device.
+            </>
+          ) : (
+            <>
+              Start watching asks Windows for administrator rights. That is how Pulse sees every
+              process, the path on disk, and can actually drop a socket — not just draw it. Local
+              only.
+            </>
+          )
         ) : (
           <>
             Pulse reads your browser&apos;s own timing and connection signals for this tab — real
@@ -49,14 +63,19 @@ export function ConsentGate({ hostname, onAllow, onDeny, desktop }: ConsentGateP
         )}
       </p>
 
+      {elevationError && (
+        <p className="font-mono text-[0.7rem] text-alert max-w-sm mb-6">{elevationError}</p>
+      )}
+
       <div className="flex items-center gap-4">
         <button
           type="button"
           onClick={onAllow}
-          data-cursor="Allow ↗"
-          className="rounded-full bg-signal text-bg px-7 py-3 font-mono text-xs tracking-[0.14em] uppercase hover:opacity-90 transition-opacity"
+          disabled={elevating}
+          data-cursor="Watch"
+          className="rounded-full bg-signal text-bg px-7 py-3 font-mono text-xs tracking-[0.14em] uppercase hover:opacity-90 transition-opacity disabled:opacity-60"
         >
-          Allow &amp; watch ↗
+          {elevating ? "Asking Windows…" : desktop ? "Start watching ↗" : "Allow & watch ↗"}
         </button>
         <button
           type="button"

@@ -19,6 +19,10 @@ export function registerGsap() {
   CustomEase.create("pulse-liquid", "0.76, 0, 0.24, 1");
   CustomEase.create("pulse-elastic", "0.34, 1.56, 0.64, 1");
 
+  // Without this, Chromium pauses rAF while Pulse is in the background;
+  // on return GSAP tries to catch up every missed frame and the map locks.
+  gsap.ticker.lagSmoothing(0);
+
   registered = true;
 }
 

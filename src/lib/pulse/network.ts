@@ -1,8 +1,8 @@
 // Geometry for the *live* multi-connection neuron diagram. A single device
-// soma sits at the center; every host it's actually talking to gets its own
-// target soma radiating outward in its own direction — the way a real
-// neuron's dendrites branch all around the cell body, not fanned to one
-// side like a diagram.
+// soma sits at the center; every host gets a fixed slot on the circle derived
+// only from its own identity — never from how many siblings exist or what
+// index it holds in the list. That way new connections appear without
+// shoving the ones already on screen.
 
 import { buildMyelinTicks, sampleCubicBezier } from "./neuron";
 
@@ -32,9 +32,6 @@ export interface AxonGeometry {
   forks: { d: string }[];
 }
 
-// Node's V8 and a browser's V8 can disagree in the last bit of
-// Math.sin/cos for the same input — round so SSR and client markup stay
-// byte-identical.
 function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
@@ -53,50 +50,90 @@ function hashHost(host: string): number {
   return h;
 }
 
-export const NETWORK_VIEW = { width: 1000, height: 760 };
-export const DEVICE_SOMA: Soma = { cx: 500, cy: 380, r: 50 };
+export const DEVICE_SOMA: Soma = { cx: 0, cy: 0, r: 42 };
 
-const TARGET_R = 24;
-const RING_RADII = [175, 235, 295];
-const MAX_RADIUS = 330;
+const NODE_R = 16;
+/** Minimum centre-to-centre distance between two synapses. */
+const MIN_SPACING = 148;
+const INNER_RADIUS = 168;
+const RING_GAP = 148;
 
-/** Radar rings drawn behind the whole diagram — a software instrument, not a hero graphic. */
-export const RADAR_RINGS = [130, RING_RADII[0], RING_RADII[1], RING_RADII[2]];
+export interface SlotLayout {
+  somata: Map<string, Soma>;
+  maxRadius: number;
+  viewExtent: number;
+  rings: number[];
+}
+
+function ringSpec(ringIndex: number): { radius: number; slots: number } {
+  const radius = INNER_RADIUS + ringIndex * RING_GAP;
+  const slots = Math.max(6, Math.floor((2 * Math.PI * radius) / MIN_SPACING));
+  return { radius, slots };
+}
+
+function polarForSlot(slot: number): { radius: number; angle: number } {
+  let remaining = slot;
+  let ring = 0;
+  while (true) {
+    const spec = ringSpec(ring);
+    if (remaining < spec.slots) {
+      const stagger = ring * (Math.PI / spec.slots);
+      const angle = (remaining / spec.slots) * Math.PI * 2 + stagger - Math.PI / 2;
+      return { radius: spec.radius, angle };
+    }
+    remaining -= spec.slots;
+    ring += 1;
+  }
+}
 
 /**
- * Places a target soma somewhere around the full circle, not just to one
- * side. Position is derived from the host string itself (not array index),
- * so a given host always lands in the same spot even as siblings come and
- * go — it doesn't jump around the moment the connection list re-orders.
+ * Concentric rings with a hard minimum gap. Slot index is permanent per host,
+ * so existing synapses never jump when new ones appear — newcomers take the
+ * next free seat on an outer ring.
  */
-export function targetSomaPosition(host: string, index: number, total: number): Soma {
-  const n = Math.max(total, 1);
-  const hash = hashHost(host);
-  const rand = seededRand(hash);
+export function layoutSomataFromSlots(slotByHost: Map<string, number>): SlotLayout {
+  const somata = new Map<string, Soma>();
+  let maxRadius = INNER_RADIUS;
 
-  const angleStep = 360 / n;
-  const baseAngle = -90 + index * angleStep;
-  const jitter = (rand() - 0.5) * angleStep * 0.5;
-  const angleDeg = baseAngle + jitter;
-  const angle = (angleDeg * Math.PI) / 180;
+  for (const [host, slot] of slotByHost) {
+    const { radius, angle } = polarForSlot(slot);
+    maxRadius = Math.max(maxRadius, radius);
+    somata.set(host, {
+      cx: round(DEVICE_SOMA.cx + Math.cos(angle) * radius),
+      cy: round(DEVICE_SOMA.cy + Math.sin(angle) * radius),
+      r: NODE_R,
+    });
+  }
 
-  const ring = RING_RADII[hash % RING_RADII.length];
-  const radiusJitter = (rand() - 0.5) * 22;
-  const radius = Math.min(ring + radiusJitter, MAX_RADIUS);
+  const viewExtent = Math.ceil(maxRadius + NODE_R + 72);
+  const ringCount = Math.max(3, Math.ceil((maxRadius - INNER_RADIUS) / RING_GAP) + 1);
+  const rings = Array.from({ length: ringCount }, (_, i) => ringSpec(i).radius);
 
+  return { somata, maxRadius, viewExtent, rings };
+}
+
+export function shortHostLabel(name: string, max = 22): string {
+  if (!name.includes(".")) return name.length <= max ? name : `${name.slice(0, max - 1)}…`;
+  const first = name.split(".")[0];
+  if (first && first.length >= 3 && first.length <= max && !/^\d+$/.test(first)) return first;
+  if (name.length <= max) return name;
+  return `${name.slice(0, max - 1)}…`;
+}
+
+/** @deprecated — use layoutSomataFromSlots for live monitor */
+export function targetSomaPosition(host: string): Soma {
+  const { radius, angle } = polarForSlot(hashHost(host) % 24);
   return {
     cx: round(DEVICE_SOMA.cx + Math.cos(angle) * radius),
     cy: round(DEVICE_SOMA.cy + Math.sin(angle) * radius),
-    r: TARGET_R,
+    r: NODE_R,
   };
 }
 
-/** Angle (radians) pointing from the device soma out to a target — used to aim outward-facing dendrites. */
 export function outwardAngle(target: Soma): number {
   return Math.atan2(target.cy - DEVICE_SOMA.cy, target.cx - DEVICE_SOMA.cx);
 }
 
-/** An organic, slightly-bowed axon from the device soma to a target soma, plus 1-2 small forking tendrils. */
 export function buildAxon(target: Soma, host: string): AxonGeometry {
   const dx = target.cx - DEVICE_SOMA.cx;
   const dy = target.cy - DEVICE_SOMA.cy;
@@ -125,8 +162,6 @@ export function buildAxon(target: Soma, host: string): AxonGeometry {
   const points = sampleCubicBezier(p0, c1, c2, p3, 12);
   const ticks = buildMyelinTicks(points, 5);
 
-  // One or two short offshoot tendrils branching off the main path partway
-  // along, the way a real axon collateral splits off before the terminal.
   const forkCount = 1 + (rand() > 0.5 ? 1 : 0);
   const forks: { d: string }[] = [];
   for (let i = 0; i < forkCount; i++) {
@@ -146,7 +181,6 @@ export function buildAxon(target: Soma, host: string): AxonGeometry {
   return { d, p0, p3, ticks, forks };
 }
 
-/** Fine hairs radiating from the device soma in every direction — texture, not a signal path. */
 export function buildDeviceHairs(count: number, seed = 1): Dendrite[] {
   const rand = seededRand(seed);
   const hairs: Dendrite[] = [];
@@ -162,7 +196,6 @@ export function buildDeviceHairs(count: number, seed = 1): Dendrite[] {
   return hairs;
 }
 
-/** Short dendrite hairs at a target soma, branching further outward (away from the device). */
 export function buildOutwardHairs(target: Soma, awayAngle: number, count: number, host: string): Dendrite[] {
   const rand = seededRand(hashHost(host) + 19);
   const hairs: Dendrite[] = [];
