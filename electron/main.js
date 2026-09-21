@@ -241,7 +241,9 @@ ipcMain.handle("connect-to", (_evt, host) => {
       resolve(result);
     };
 
-    socket.once("connect", () => finish({ ok: true, ms: Date.now() - t0, host }));
+    socket.once("connect", () =>
+      finish({ ok: true, ms: Date.now() - t0, host, address: socket.remoteAddress })
+    );
     socket.once("timeout", () => finish({ ok: false, ms: Date.now() - t0, host, reason: "timeout" }));
     socket.once("error", (err) => finish({ ok: false, ms: Date.now() - t0, host, reason: err.code || err.message }));
   });

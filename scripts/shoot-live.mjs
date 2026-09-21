@@ -18,15 +18,16 @@ await page.getByText("Allow & watch").click();
 await page.waitForTimeout(1600);
 await page.screenshot({ path: "shots/live-single.png" });
 
-// Connect to a real second host.
-await page.getByPlaceholder("google.com").fill("google.com");
-await page.getByText("Connect ↗").click();
-await page.waitForTimeout(1800);
-await page.screenshot({ path: "shots/live-two-connections.png" });
+// Connect to several real hosts to see the radial spread with more nodes.
+for (const host of ["google.com", "github.com", "cloudflare.com", "wikipedia.org", "vercel.com"]) {
+  await page.getByPlaceholder("google.com").fill(host);
+  await page.getByText("↵ run").click();
+  await page.waitForTimeout(1400);
+}
+await page.screenshot({ path: "shots/live-radial.png" });
 
-// Give the dots a moment to travel, then capture again.
 await page.waitForTimeout(1500);
-await page.screenshot({ path: "shots/live-two-connections-2.png" });
+await page.screenshot({ path: "shots/live-radial-2.png" });
 
 console.log("console errors:", consoleErrors.length ? consoleErrors : "none");
 

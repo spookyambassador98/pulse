@@ -27,7 +27,12 @@ export interface PacketEvent {
 }
 
 export interface ConnectionInfo {
+  /** Stable key: the raw IP in desktop mode, the hostname in browser mode / manual connects. */
   host: string;
+  /** Display name — a reverse-DNS hostname, the typed hostname, or (until resolved) the IP itself. */
+  name: string;
+  /** Numeric address, when it's known and distinct from `name` (so the UI can show both). */
+  ip?: string;
   variant: "healthy" | "alert";
   requestCount: number;
   lastActivityMs: number;
@@ -66,9 +71,11 @@ interface PulseDesktopBridge {
   onPacket: (cb: (data: RawPacket) => void) => () => void;
   onCaptureStatus: (cb: (data: CaptureStatus) => void) => () => void;
   getCaptureStatus: () => Promise<CaptureStatus>;
-  connectTo: (host: string) => Promise<{ ok: boolean; ms: number; host: string; reason?: string }>;
+  connectTo: (host: string) => Promise<{ ok: boolean; ms: number; host: string; address?: string; reason?: string }>;
   reverseDns: (ip: string) => Promise<string | null>;
 }
+
+const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 
 function getDesktopBridge(): PulseDesktopBridge | null {
   if (typeof window === "undefined") return null;
@@ -145,6 +152,10 @@ export function useNetworkPulses(active: boolean) {
   // regardless of destination). This tracks a short cooldown per host so
   // that duplicate isn't announced a second time.
   const manualCooldown = useRef<Map<string, number>>(new Map());
+  // Reverse-DNS lookups are fired once per raw IP the desktop capture sees
+  // and cached here — otherwise every packet from the same host would
+  // trigger another lookup.
+  const nameResolveState = useRef<Map<string, "pending" | "done">>(new Map());
 
   const nextId = useCallback(() => `pk-${idRef.current++}`, []);
 
@@ -158,25 +169,70 @@ export function useNetworkPulses(active: boolean) {
     [nextId]
   );
 
-  const upsertConnection = useCallback((host: string, ok: boolean, manual: boolean, meta?: string) => {
-    setConnections((prev) => {
-      const idx = prev.findIndex((c) => c.host === host);
-      const now = performance.now();
-      if (idx === -1) {
-        return [...prev, { host, variant: ok ? "healthy" : "alert", requestCount: 1, lastActivityMs: now, manual, meta }];
-      }
-      const next = [...prev];
-      next[idx] = {
-        ...next[idx],
-        variant: ok ? next[idx].variant : "alert",
-        requestCount: next[idx].requestCount + 1,
-        lastActivityMs: now,
-        manual: next[idx].manual || manual,
-        meta: meta ?? next[idx].meta,
-      };
-      return next;
-    });
+  const upsertConnection = useCallback(
+    (params: { host: string; ok: boolean; manual: boolean; meta?: string; name?: string; ip?: string }) => {
+      const { host, ok, manual, meta, name, ip } = params;
+      setConnections((prev) => {
+        const idx = prev.findIndex((c) => c.host === host);
+        const now = performance.now();
+        if (idx === -1) {
+          return [
+            ...prev,
+            {
+              host,
+              name: name ?? host,
+              ip,
+              variant: ok ? "healthy" : "alert",
+              requestCount: 1,
+              lastActivityMs: now,
+              manual,
+              meta,
+            },
+          ];
+        }
+        const next = [...prev];
+        next[idx] = {
+          ...next[idx],
+          variant: ok ? next[idx].variant : "alert",
+          requestCount: next[idx].requestCount + 1,
+          lastActivityMs: now,
+          manual: next[idx].manual || manual,
+          meta: meta ?? next[idx].meta,
+          name: name ?? next[idx].name,
+          ip: ip ?? next[idx].ip,
+        };
+        return next;
+      });
+    },
+    []
+  );
+
+  const patchConnectionName = useCallback((host: string, name: string) => {
+    setConnections((prev) => prev.map((c) => (c.host === host ? { ...c, name } : c)));
   }, []);
+
+  // Fire a reverse-DNS lookup for a raw IP the first time it's seen, and
+  // patch the connection's display name in when (if) it resolves. Silent
+  // no-op outside the desktop shell or for names that aren't plain IPs.
+  const resolveNameIfNeeded = useCallback(
+    (host: string) => {
+      if (!IPV4_RE.test(host)) return;
+      if (nameResolveState.current.has(host)) return;
+      const bridge = getDesktopBridge();
+      if (!bridge) return;
+      nameResolveState.current.set(host, "pending");
+      bridge
+        .reverseDns(host)
+        .then((name) => {
+          nameResolveState.current.set(host, "done");
+          if (name) patchConnectionName(host, name);
+        })
+        .catch(() => {
+          nameResolveState.current.set(host, "done");
+        });
+    },
+    [patchConnectionName]
+  );
 
   // Desktop shell: the main process pushes real, system-wide connection
   // snapshots (every established connection on the machine, from any
@@ -198,7 +254,8 @@ export function useNetworkPulses(active: boolean) {
         lastSeen.set(key, now);
         const meta = c.process ? `${c.process}${c.pid ? ` (${c.pid})` : ""}` : undefined;
 
-        upsertConnection(c.remote, true, false, meta);
+        upsertConnection({ host: c.remote, ok: true, manual: false, meta, ip: c.remote });
+        resolveNameIfNeeded(c.remote);
         if (captureActiveRef.current) continue; // real packet events cover this instead
 
         pushEvent({
@@ -214,7 +271,7 @@ export function useNetworkPulses(active: boolean) {
     });
 
     return unsubscribe;
-  }, [active, pushEvent, upsertConnection]);
+  }, [active, pushEvent, upsertConnection, resolveNameIfNeeded]);
 
   // Real packet capture (WinPcap/Npcap), when the driver + native module
   // are available: individual decoded TCP packets straight off the wire —
@@ -239,7 +296,8 @@ export function useNetworkPulses(active: boolean) {
 
     const unsubPacket = bridge.onPacket((pkt) => {
       const isReset = pkt.flags.includes("RST");
-      upsertConnection(pkt.remoteIp, !isReset, false);
+      upsertConnection({ host: pkt.remoteIp, ok: !isReset, manual: false, ip: pkt.remoteIp });
+      resolveNameIfNeeded(pkt.remoteIp);
       pushEvent({
         host: pkt.remoteIp,
         kind: pkt.direction,
@@ -253,7 +311,7 @@ export function useNetworkPulses(active: boolean) {
       unsubStatus();
       unsubPacket();
     };
-  }, [active, pushEvent, upsertConnection]);
+  }, [active, pushEvent, upsertConnection, resolveNameIfNeeded]);
 
   // Browser fallback: seed with whatever this page already loaded, then
   // watch for every new request in real time via PerformanceObserver.
@@ -267,7 +325,7 @@ export function useNetworkPulses(active: boolean) {
     // callback (matching the pattern below) rather than calling setState
     // synchronously in the effect body.
     window.setTimeout(() => {
-      upsertConnection(window.location.hostname, true, false);
+      upsertConnection({ host: window.location.hostname, ok: true, manual: false });
     }, 0);
 
     let observer: PerformanceObserver | undefined;
@@ -281,7 +339,7 @@ export function useNetworkPulses(active: boolean) {
             const cooldownUntil = manualCooldown.current.get(host);
             if (cooldownUntil && performance.now() < cooldownUntil) continue;
 
-            upsertConnection(host, true, false);
+            upsertConnection({ host, ok: true, manual: false });
             pushEvent({
               host,
               kind: "out",
@@ -339,7 +397,7 @@ export function useNetworkPulses(active: boolean) {
 
       manualCooldown.current.set(host, performance.now() + 5000);
       setConnectingHost(host);
-      upsertConnection(host, true, true);
+      upsertConnection({ host, ok: true, manual: true, name: host });
 
       const t0 = performance.now();
       pushEvent({
@@ -357,10 +415,10 @@ export function useNetworkPulses(active: boolean) {
             const t1 = performance.now();
             if (res.ok) {
               pushEvent({ host, kind: "in", ok: true, atMs: t1, durationMs: res.ms, label: `SYN-ACK · ${res.ms}ms` });
-              upsertConnection(host, true, true);
+              upsertConnection({ host, ok: true, manual: true, name: host, ip: res.address });
             } else {
               pushEvent({ host, kind: "in", ok: false, atMs: t1, durationMs: res.ms, label: res.reason || "unreachable" });
-              upsertConnection(host, false, true);
+              upsertConnection({ host, ok: false, manual: true, name: host });
             }
           })
           .finally(() => setConnectingHost(null));
@@ -376,13 +434,13 @@ export function useNetworkPulses(active: boolean) {
           const t1 = performance.now();
           const durationMs = Math.round(t1 - t0);
           pushEvent({ host, kind: "in", ok: true, atMs: t1, durationMs, label: `${durationMs}ms` });
-          upsertConnection(host, true, true);
+          upsertConnection({ host, ok: true, manual: true, name: host });
         })
         .catch(() => {
           const t1 = performance.now();
           const durationMs = Math.round(t1 - t0);
           pushEvent({ host, kind: "in", ok: false, atMs: t1, durationMs, label: "blocked / unreachable" });
-          upsertConnection(host, false, true);
+          upsertConnection({ host, ok: false, manual: true, name: host });
         })
         .finally(() => setConnectingHost(null));
     },
