@@ -9,7 +9,22 @@ const path = require("path");
 const http = require("http");
 const net = require("net");
 const dns = require("dns").promises;
+const fs = require("fs");
 const { spawn } = require("child_process");
+
+// Elevated (Run as Administrator) launches don't have a visible console —
+// log crashes to a file so they're diagnosable after the fact.
+const CRASH_LOG = path.join(__dirname, "..", "crash.log");
+function logLine(msg) {
+  try {
+    fs.appendFileSync(CRASH_LOG, `[${new Date().toISOString()}] ${msg}\n`);
+  } catch {
+    /* noop */
+  }
+}
+process.on("uncaughtException", (err) => logLine(`uncaughtException: ${err.stack || err}`));
+process.on("unhandledRejection", (err) => logLine(`unhandledRejection: ${err}`));
+logLine("=== main.js starting ===");
 
 let si;
 try {
@@ -17,6 +32,14 @@ try {
 } catch {
   si = null;
 }
+
+const { startCapture, isAvailable: captureAvailable } = require("./capture");
+let activeCapture = null;
+// Capture starts once at boot, before the renderer has opened the monitor
+// (and therefore before it's subscribed to the "capture-status" push). Cache
+// the last status so a late subscriber can pull it instead of missing the
+// one-shot event entirely.
+let lastCaptureStatus = { active: false, reason: "not started yet" };
 
 const PORT = 4823;
 const PROJECT_ROOT = path.join(__dirname, "..");
@@ -75,11 +98,17 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  logLine("app ready, starting next server");
   startNextServer();
   try {
     await createWindow();
+    logLine("window created");
     startNetworkMonitor();
+    logLine("network monitor started");
+    startPacketCapture();
+    logLine("packet capture start attempted");
   } catch (err) {
+    logLine(`startup failure: ${err.stack || err}`);
     console.error("Failed to start Pulse desktop shell:", err);
     app.quit();
   }
@@ -87,9 +116,55 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   stopNetworkMonitor();
+  activeCapture?.stop();
   nextProcess?.kill();
   app.quit();
 });
+
+// ---- real packet capture (WinPcap/Npcap) -------------------------------
+// Individual decoded TCP packets, straight off the wire — the literal
+// thing the browser version can only ever approximate.
+
+function startPacketCapture() {
+  if (!win || win.isDestroyed()) return;
+
+  if (!captureAvailable()) {
+    logLine("capture unavailable: native module did not load");
+    lastCaptureStatus = { active: false, reason: "native module unavailable" };
+    win.webContents.send("capture-status", lastCaptureStatus);
+    return;
+  }
+
+  let result;
+  try {
+    result = startCapture((pkt) => {
+      if (!win || win.isDestroyed()) return;
+      win.webContents.send("packet", pkt);
+    });
+  } catch (err) {
+    logLine(`startCapture threw: ${err.stack || err}`);
+    lastCaptureStatus = { active: false, reason: String(err.message || err) };
+    win.webContents.send("capture-status", lastCaptureStatus);
+    return;
+  }
+
+  if (!result.ok) {
+    logLine(`capture failed to start: ${result.reason}`);
+    console.warn("[capture] failed to start:", result.reason);
+    lastCaptureStatus = { active: false, reason: result.reason };
+    win.webContents.send("capture-status", lastCaptureStatus);
+    return;
+  }
+
+  logLine(`capture started on device: ${result.device.name} (${result.device.description})`);
+  activeCapture = result;
+  lastCaptureStatus = {
+    active: true,
+    device: result.device.name,
+    description: result.device.description,
+  };
+  win.webContents.send("capture-status", lastCaptureStatus);
+}
 
 // ---- real, system-wide network monitor ---------------------------------
 // systeminformation.networkConnections() reads the OS's own connection
@@ -171,6 +246,8 @@ ipcMain.handle("connect-to", (_evt, host) => {
     socket.once("error", (err) => finish({ ok: false, ms: Date.now() - t0, host, reason: err.code || err.message }));
   });
 });
+
+ipcMain.handle("get-capture-status", () => lastCaptureStatus);
 
 ipcMain.handle("reverse-dns", async (_evt, ip) => {
   try {

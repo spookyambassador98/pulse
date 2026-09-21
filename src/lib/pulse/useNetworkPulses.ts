@@ -44,9 +44,28 @@ interface DesktopConnection {
   protocol: string;
 }
 
+interface RawPacket {
+  remoteIp: string;
+  remotePort: number;
+  flags: string; // "SYN" | "SYN-ACK" | "FIN" | "RST" | "DATA" | ...
+  length: number;
+  direction: "out" | "in";
+  atMs: number;
+}
+
+interface CaptureStatus {
+  active: boolean;
+  device?: string;
+  description?: string;
+  reason?: string;
+}
+
 interface PulseDesktopBridge {
   isDesktop: true;
   onNetworkSnapshot: (cb: (data: { at: number; connections: DesktopConnection[] }) => void) => () => void;
+  onPacket: (cb: (data: RawPacket) => void) => () => void;
+  onCaptureStatus: (cb: (data: CaptureStatus) => void) => () => void;
+  getCaptureStatus: () => Promise<CaptureStatus>;
   connectTo: (host: string) => Promise<{ ok: boolean; ms: number; host: string; reason?: string }>;
   reverseDns: (ip: string) => Promise<string | null>;
 }
@@ -114,7 +133,13 @@ export function useNetworkPulses(active: boolean) {
   const [connections, setConnections] = useState<ConnectionInfo[]>([]);
   const [events, setEvents] = useState<PacketEvent[]>([]);
   const [connectingHost, setConnectingHost] = useState<string | null>(null);
+  const [capture, setCapture] = useState<CaptureStatus>({ active: false });
   const idRef = useRef(0);
+  // Once real packet capture comes online, the connection-snapshot effect
+  // stops inventing its own "SYN / alive" pulses — the capture stream
+  // supplies genuine per-packet events instead. Layout/meta bookkeeping
+  // (upsertConnection) still runs either way.
+  const captureActiveRef = useRef(false);
   // `connectTo`'s own fetch() also shows up as a "resource" entry through
   // the observer below (fetch calls generate Resource Timing entries
   // regardless of destination). This tracks a short cooldown per host so
@@ -174,6 +199,8 @@ export function useNetworkPulses(active: boolean) {
         const meta = c.process ? `${c.process}${c.pid ? ` (${c.pid})` : ""}` : undefined;
 
         upsertConnection(c.remote, true, false, meta);
+        if (captureActiveRef.current) continue; // real packet events cover this instead
+
         pushEvent({
           host: c.remote,
           kind: isNew ? "out" : "in",
@@ -187,6 +214,45 @@ export function useNetworkPulses(active: boolean) {
     });
 
     return unsubscribe;
+  }, [active, pushEvent, upsertConnection]);
+
+  // Real packet capture (WinPcap/Npcap), when the driver + native module
+  // are available: individual decoded TCP packets straight off the wire —
+  // real flags, real byte length, no polling interval smoothing it over.
+  useEffect(() => {
+    if (!active) return;
+    const bridge = getDesktopBridge();
+    if (!bridge) return;
+
+    // Capture starts once at app boot, before this effect (and its
+    // subscription) exists — pull the current status now instead of only
+    // waiting on the next push, which may never come.
+    bridge.getCaptureStatus().then((status) => {
+      captureActiveRef.current = status.active;
+      setCapture(status);
+    });
+
+    const unsubStatus = bridge.onCaptureStatus((status) => {
+      captureActiveRef.current = status.active;
+      setCapture(status);
+    });
+
+    const unsubPacket = bridge.onPacket((pkt) => {
+      const isReset = pkt.flags.includes("RST");
+      upsertConnection(pkt.remoteIp, !isReset, false);
+      pushEvent({
+        host: pkt.remoteIp,
+        kind: pkt.direction,
+        ok: !isReset,
+        atMs: performance.now(),
+        label: `${pkt.flags} · ${pkt.length}B · :${pkt.remotePort}`,
+      });
+    });
+
+    return () => {
+      unsubStatus();
+      unsubPacket();
+    };
   }, [active, pushEvent, upsertConnection]);
 
   // Browser fallback: seed with whatever this page already loaded, then
@@ -323,5 +389,5 @@ export function useNetworkPulses(active: boolean) {
     [pushEvent, upsertConnection]
   );
 
-  return { connections, events, connectTo, connectingHost };
+  return { connections, events, connectTo, connectingHost, capture };
 }

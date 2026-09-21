@@ -20,7 +20,7 @@ interface LiveNeuronNetworkProps {
 // firing in parallel. This is what "the neuron now runs with two" looks
 // like when it's driven by actual browser network events.
 export function LiveNeuronNetwork({ active }: LiveNeuronNetworkProps) {
-  const { connections, events, connectTo, connectingHost } = useNetworkPulses(active);
+  const { connections, events, connectTo, connectingHost, capture } = useNetworkPulses(active);
   const reducedMotion = usePrefersReducedMotion();
   const [hostInput, setHostInput] = useState("");
   const pathRefs = useRef<Map<string, SVGPathElement>>(new Map());
@@ -184,6 +184,17 @@ export function LiveNeuronNetwork({ active }: LiveNeuronNetworkProps) {
             Connecting to {connectingHost}…
           </div>
         )}
+
+        {capture.active ? (
+          <div className="absolute top-3 left-3 font-mono text-[0.6rem] text-signal uppercase tracking-[0.1em] flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse" />
+            Raw packet capture · {capture.description || capture.device}
+          </div>
+        ) : capture.reason ? (
+          <div className="absolute top-3 left-3 font-mono text-[0.6rem] text-ink-dim uppercase tracking-[0.1em] opacity-70">
+            Connection polling only · {capture.reason}
+          </div>
+        ) : null}
       </div>
 
       <div className="border-t border-line px-4 md:px-6 py-3 flex flex-col md:flex-row gap-3 md:items-center md:justify-between shrink-0">
