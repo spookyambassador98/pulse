@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ConsentGate } from "./ConsentGate";
-import { NeuronDiagram } from "./NeuronDiagram";
-import { SpikeTrain } from "./SpikeTrain";
+import { LiveNeuronNetwork } from "./LiveNeuronNetwork";
 import { useLiveSession } from "@/lib/pulse/useLiveSession";
 
 type Stage = "consent" | "connecting" | "live";
@@ -20,7 +19,7 @@ interface MonitorWindowProps {
 export function MonitorWindow({ open, onClose }: MonitorWindowProps) {
   const [stage, setStage] = useState<Stage>("consent");
   const [elapsedDs, setElapsedDs] = useState(0); // deciseconds
-  const { data, liveRequestCount } = useLiveSession(stage === "live");
+  const { data } = useLiveSession(stage === "live");
   const hostname = typeof window !== "undefined" ? window.location.hostname : "this device";
 
   useEffect(() => {
@@ -97,48 +96,23 @@ export function MonitorWindow({ open, onClose }: MonitorWindowProps) {
 
           {stage === "live" && (
             <div className="h-full flex flex-col">
-              <div className="flex-1 relative min-h-0">
-                <NeuronDiagram className="absolute inset-0 w-full h-full" variant="healthy" />
-                <div className="absolute top-4 left-4 font-mono text-[0.65rem] tracking-[0.14em] uppercase text-signal flex items-center gap-2">
+              <div className="flex items-center justify-between px-4 md:px-6 py-2 border-b border-line shrink-0">
+                <div className="font-mono text-[0.65rem] tracking-[0.14em] uppercase text-signal flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse" />
                   Live · {(elapsedDs / 10).toFixed(1)}s
                 </div>
+                <div className="font-mono text-[0.62rem] text-ink-dim tracking-[0.08em] uppercase">
+                  TTFB {data?.ttfbMs != null ? `${data.ttfbMs}ms` : "—"} · {data?.connectionType ? data.connectionType.toUpperCase() : "—"}
+                </div>
               </div>
 
-              <div className="border-t border-line px-4 md:px-6 py-4 grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
-                <Stat label="TTFB (real)" value={data?.ttfbMs != null ? `${data.ttfbMs}ms` : "—"} />
-                <Stat label="Requests (live)" value={String(liveRequestCount || "—")} />
-                <Stat
-                  label="Connection"
-                  value={data?.connectionType ? data.connectionType.toUpperCase() : "—"}
-                />
-                <Stat
-                  label="RTT"
-                  value={data?.rttMs != null ? `${data.rttMs}ms` : data?.downlinkMbps ? `${data.downlinkMbps}Mbps` : "—"}
-                />
+              <div className="flex-1 min-h-0">
+                <LiveNeuronNetwork active={stage === "live"} />
               </div>
-
-              <SpikeTrain
-                variant="healthy"
-                seed={31}
-                width={1400}
-                height={44}
-                color="var(--signal)"
-                className="h-10 border-t border-line shrink-0"
-              />
             </div>
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="font-mono">
-      <div className="text-[0.65rem] tracking-[0.12em] uppercase text-ink-dim mb-1">{label}</div>
-      <div className="text-lg md:text-xl text-ink">{value}</div>
     </div>
   );
 }
