@@ -1,0 +1,6 @@
+release
+.next
+node_modules
+*.log
+*.exe
+scripts/cdp-*.mjs
