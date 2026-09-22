@@ -1,4 +1,4 @@
-const VISITS_URL = "https://b2b-apex.com/api/visits";
+const VISITS_URL = "https://b2b-apex.vercel.app/api/visits";
 
 export const VISIT_COMPANY_KEY = "salon-visit-company";
 export const VISIT_VID_KEY = "salon-visit-vid";
