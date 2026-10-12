@@ -3,7 +3,13 @@
   "version": "0.1.0",
   "description": "Pulse — a live, neuron-style visualization of your device's real network activity.",
   "author": "Dr.",
+  "license": "MIT",
   "private": true,
+  "homepage": "https://pulse-beryl-one.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spookyambassador98/pulse.git"
+  },
   "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
