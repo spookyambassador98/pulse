@@ -1,6 +1,12 @@
-const VISITS_URL = "https://b2b-apex.vercel.app/api/visits";
+/** SalonTech (Ops Hub) — центр управления, куда пишутся визиты. */
+const VISITS_URL =
+  process.env.NEXT_PUBLIC_VISITS_URL || "https://salontech-mu.vercel.app/api/visits";
 
 export const VISIT_COMPANY_KEY = "salon-visit-company";
+export const VISIT_NAME_KEY = "salon-visit-name";
+export const VISIT_ROLE_KEY = "salon-visit-role";
+/** Cookie, по которой /download понимает, какая компания скачала. */
+export const VISIT_COOKIE = "pulse_visit";
 export const VISIT_VID_KEY = "salon-visit-vid";
 export const VISIT_MODE_KEY = "salon-visit-mode";
 export const VISIT_START_KEY = "salon-visit-start";
@@ -17,8 +23,38 @@ export function isGateOpen() {
   }
 }
 
-export function rememberCompanyVisit(company: string) {
-  const name = company.replace(/\s+/g, " ").trim().slice(0, 80);
+function clean(v: string) {
+  return v.replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+/** Свои заходы не считаем: открой сайт один раз с ?visit-gate=off (вернуть: ?visit-gate=on). */
+export function isOwnerBrowser() {
+  try {
+    const q = new URLSearchParams(location.search).get("visit-gate");
+    if (q === "off") localStorage.setItem("vg-off", "1");
+    if (q === "on") localStorage.removeItem("vg-off");
+    return localStorage.getItem("vg-off") === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function savedIdentity() {
+  try {
+    return {
+      company: localStorage.getItem(VISIT_COMPANY_KEY) || "",
+      name: localStorage.getItem(VISIT_NAME_KEY) || "",
+      role: localStorage.getItem(VISIT_ROLE_KEY) || "",
+    };
+  } catch {
+    return { company: "", name: "", role: "" };
+  }
+}
+
+export function rememberCompanyVisit(company: string, person: { name?: string; role?: string } = {}) {
+  const name = clean(company);
+  const who = clean(person.name || "");
+  const role = clean(person.role || "");
   const vid = (
     globalThis.crypto?.randomUUID?.() ||
     `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
@@ -29,6 +65,16 @@ export function rememberCompanyVisit(company: string) {
   sessionStorage.setItem(VISIT_START_KEY, String(Date.now()));
   sessionStorage.setItem(VISIT_LAND_KEY, location.href);
   sessionStorage.setItem(GATE_KEY, "1");
+  sessionStorage.setItem(VISIT_NAME_KEY, who);
+  sessionStorage.setItem(VISIT_ROLE_KEY, role);
+  try {
+    localStorage.setItem(VISIT_COMPANY_KEY, name);
+    localStorage.setItem(VISIT_NAME_KEY, who);
+    localStorage.setItem(VISIT_ROLE_KEY, role);
+  } catch {
+    /* private mode */
+  }
+  document.cookie = `${VISIT_COOKIE}=${encodeURIComponent(`${vid}|${name}`)}; path=/; max-age=86400; samesite=lax`;
   return { name, vid };
 }
 
@@ -72,6 +118,8 @@ export function sendVisit(events: { type: string; path?: string; detail?: string
   const body = JSON.stringify({
     vid,
     company,
+    name: sessionStorage.getItem(VISIT_NAME_KEY) || "",
+    role: sessionStorage.getItem(VISIT_ROLE_KEY) || "",
     project: VISIT_PROJECT,
     events: events.map((e) => ({
       type: e.type,
@@ -149,7 +197,9 @@ export function attachVisitTracker() {
     sendVisit([{ type: "leave", detail: "hidden" }]);
   };
 
-  const dwell = window.setInterval(ping, 15_000);
+  const dwell = window.setInterval(() => {
+    if (document.visibilityState === "visible") ping();
+  }, 15_000);
   document.addEventListener("click", onClick, true);
   document.addEventListener("submit", onSubmit, true);
   document.addEventListener("visibilitychange", onHide);
