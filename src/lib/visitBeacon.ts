@@ -27,18 +27,6 @@ function clean(v: string) {
   return v.replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
-/** Свои заходы не считаем: открой сайт один раз с ?visit-gate=off (вернуть: ?visit-gate=on). */
-export function isOwnerBrowser() {
-  try {
-    const q = new URLSearchParams(location.search).get("visit-gate");
-    if (q === "off") localStorage.setItem("vg-off", "1");
-    if (q === "on") localStorage.removeItem("vg-off");
-    return localStorage.getItem("vg-off") === "1";
-  } catch {
-    return false;
-  }
-}
-
 export function savedIdentity() {
   try {
     return {

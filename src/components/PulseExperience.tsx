@@ -6,7 +6,7 @@ import { DownloadLanding } from "./DownloadLanding";
 import { CompanyGate } from "./CompanyGate";
 import { VisitTracker } from "./VisitTracker";
 import { useIsPulseDesktop } from "@/lib/pulse/useNetworkPulses";
-import { isGateOpen, isOwnerBrowser } from "@/lib/visitBeacon";
+import { isGateOpen } from "@/lib/visitBeacon";
 
 export function PulseExperience() {
   const isDesktop = useIsPulseDesktop();
@@ -17,7 +17,7 @@ export function PulseExperience() {
       setPhase("app");
       return;
     }
-    setPhase(isGateOpen() || isOwnerBrowser() ? "app" : "gate");
+    setPhase(isGateOpen() ? "app" : "gate");
   }, [isDesktop]);
 
   if (isDesktop) return <PulseDesktopShell />;

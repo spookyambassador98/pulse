@@ -37,8 +37,6 @@ The public site stays shut until a company is named. Name and role are optional.
 
 ![The gate. Company is required. Name and role are optional.](docs/screenshots/gate.png)
 
-On your own browser, `?visit-gate=off` skips that gate. `?visit-gate=on` brings it back. The flag lives in local storage on that browser only.
-
 The site can post the visit and the download to a URL you set. The desktop map does not. Packet bytes stay on the machine. Pulse does not hide a window, and it does not ship your traffic off-box.
 
 | Variable | What it does |
