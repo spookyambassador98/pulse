@@ -1,56 +1,40 @@
 # Pulse
 
-A free Windows instrument. This machine, drawn as a nervous system.
+Your Windows machine, drawn as a nervous system.
 
-The website is the download plate. The app is the map. Real TCP, destinations as somata, and a cut that the operating system holds — not a grey toggle in a window.
+Task Manager will give you a list. Pulse gives you the shape. You sit in the middle. Every destination takes a seat and keeps it. Real packets travel the wires — not a screensaver pretending to be traffic.
 
-Live: [pulse-beryl-one.vercel.app](https://pulse-beryl-one.vercel.app) · Installer: [Pulse-Setup-0.1.0.exe](https://github.com/spookyambassador98/pulse/releases/latest/download/Pulse-Setup-0.1.0.exe) · License: [MIT](LICENSE)
+[Live site](https://pulse-beryl-one.vercel.app) · [Installer](https://github.com/spookyambassador98/pulse/releases/latest/download/Pulse-Setup-0.1.0.exe) · [MIT](LICENSE)
 
-![The download plate. Pulse on the left, an etched board from this machine to the network on the right.](docs/screenshots/plate.png)
+![The Pulse window. The device in the center, live destinations around it.](docs/screenshots/monitor.png)
 
 ## Why it exists
 
-A browser tab cannot see the machine. The connection table belongs to Windows. Task Manager will give you a list. Pulse gives you the shape.
+A browser tab cannot see the machine. The connection table belongs to Windows.
 
-You sit in the center. Each destination takes a seat and keeps it for the session, so the map does not jitter every time a socket blinks. Impulses travel the axon between you and that seat. Names come from reverse DNS and from ranges that are already well known. Click a node and you can read who it is, which process owns it, and the path on disk.
+I got tired of staring at IP addresses and still having no idea who the laptop was talking to. Chrome looks quiet. The map does not. Google, Cloudflare, a couple of AWS boxes, Spotify on its own little planet — all of it is already happening. Pulse just turns the lights on.
 
-Off is not a drawing. With administrator, Off is a firewall rule, a blackhole route, and a TCP reset, then a loop that keeps the socket dead. If the switch is On, traffic is still talking. If it is Off, the OS is holding it.
+Click a node and you can read who it is, which process owns it, and the path on disk. If you want the talking to stop, Off is not a grey toggle in a window. With administrator, Off is a firewall rule, a blackhole route, and a TCP reset — then a loop that keeps the socket dead.
 
-Leave the window and come back. The map does not pile up a backlog of impulses and lock. It keeps the last live state and continues.
+Leave the window. Come back. The map does not pile up a backlog and lock. It keeps the last live state and continues.
 
 ## Two surfaces
 
-| | Website | Installed app |
-| --- | --- | --- |
-| What it is | The plate you download from | The map |
-| What it can see | This tab | Every established connection on the machine |
-| Impulses | The etched board on the page | Npcap, when it is installed |
-| Cut | No | Yes, and only with administrator |
+The website is the plate you download from. The app is the map.
 
-The browser cannot see the connection table. That is why the map is an app.
+The plate can show you the idea. Only the installed app can see every established connection on the machine, listen for live impulses (if Npcap is there), and cut a destination at the OS.
+
+That is why the map is not a web demo.
 
 ![Wire, Cut, and Stay. What the instrument actually does.](docs/screenshots/wire.png)
 
-## Open the plate
-
-The public site stays shut until a company is named. Name and role are optional. The visit is written down before the installer.
-
-![The gate. Company is required. Name and role are optional.](docs/screenshots/gate.png)
-
-The site can post the visit and the download to a URL you set. The desktop map does not. Packet bytes stay on the machine. Pulse does not hide a window, and it does not ship your traffic off-box.
-
-| Variable | What it does |
-| --- | --- |
-| `NEXT_PUBLIC_DOWNLOAD_URL` | Where `/download` sends the browser. Default is the GitHub release. |
-| `NEXT_PUBLIC_VISITS_URL` | Where the plate reports a visit. |
-| `SALONTECH_DOWNLOADS_URL` | Where `/download` reports a download. |
-| `DOWNLOADS_SECRET` | Optional header on that download report. Never commit it. |
+![The download plate.](docs/screenshots/plate.png)
 
 ## Install on Windows
 
 1. Download [Pulse-Setup-0.1.0.exe](https://github.com/spookyambassador98/pulse/releases/latest/download/Pulse-Setup-0.1.0.exe). Free. About 236 MB. No account.
 2. SmartScreen will likely say “Windows protected your PC”. The installer is not code-signed. Open **More info**, then **Run anyway**. That is an unknown publisher, not a malware verdict.
-3. Install [Npcap](https://npcap.com/#download) if you want live impulses. Without it, the map can still list connections and stay quiet on the wire.
+3. Install [Npcap](https://npcap.com/#download) if you want live impulses on the wires. Without it, the map can still list connections and stay quiet on the wire.
 4. Open Pulse and choose **Start watching**. Windows may ask for administrator. Accept if you want process paths and the cut. Decline and the map still runs, limited. Pulse does not install a driver.
 5. Check the file if you want to. SHA-256 `babd0c163b13272b0554dd563af73b9c3978988093aa19ebf0e70fbaec7e65b2`.
 
@@ -60,17 +44,12 @@ Some antivirus suites flag packet capture and firewall edits. The source is this
 
 ## Use the map
 
-**Start watching** reads the Windows connection table. The device sits in the center. Destinations fan out and keep the seat they were given.
+**Start watching** reads the Windows connection table. The device sits in the center. Destinations fan out and keep the seat they were given, so a socket that blinks does not make the whole map jitter.
 
-- Drag the field to pan. The wheel zooms toward the cursor. Double-click, or the percentage button, resets the view.
+- Drag to pan. Scroll to zoom toward the cursor. Double-click, or the percentage button, to reset the view.
 - Filters along the top: All, PTR, Private, Process, Google, Cloudflare, AWS.
 - Click a node. You get the name, the address, the process, and the path. **Cut** holds that destination at the OS. Turning it back removes the rule and the route.
 - The field at the bottom can point Pulse at any host. That opens a real TCP handshake. A failure stays a failure. Pulse does not paint a success it did not get.
-- Fullscreen is the square button. Escape leaves it.
-
-The photograph below is the installed app on a real machine, after **Start watching**, not a mock of the layout.
-
-![The Pulse window. The device in the center, live destinations around it.](docs/screenshots/monitor.png)
 
 ## Build it
 
@@ -92,7 +71,7 @@ The package is marked private so `npm publish` will not take it. The source is M
 ## What is inside
 
 ```
-src/                 Next.js 16, React 19, TypeScript
+src/                 Next.js, React, TypeScript
   components/        plate, gate, and the neuron map
   lib/pulse/         layout, categories, the desktop bridge
 electron/            the window, the connection table, Npcap, the cut
@@ -100,9 +79,9 @@ resources/           icon and the installer notice
 docs/screenshots/    the photographs in this file
 ```
 
-The site and the window are the same Next.js app. `electron/main.js` serves that build on `127.0.0.1`, polls the OS connection table through `systeminformation`, and, when Npcap is present, listens for packets. The renderer talks to that process through a small preload bridge, `window.pulseDesktop`. In a normal browser tab the bridge is absent, so you get the plate instead of the map.
+The site and the window are the same Next.js app. `electron/main.js` serves that build on `127.0.0.1`, polls the OS connection table, and, when Npcap is present, listens for packets. In a normal browser tab the desktop bridge is absent, so you get the plate instead of the map.
 
-GSAP moves the impulses along the axons. Slots are assigned once per destination and not recycled during the session, so a socket that drops and returns does not jump to a new seat.
+Slots are assigned once per destination and not recycled during the session. A socket that drops and returns does not jump to a new seat.
 
 ## What it will not pretend
 
@@ -112,8 +91,17 @@ GSAP moves the impulses along the axons. Slots are assigned once per destination
 - The map does not upload packet payloads. The plate can report a visit. Those are different machines with different jobs.
 - This is an instrument for a machine you own. Cutting a node changes the firewall and the route table on that machine.
 
+The public site stays shut until a company is named. Name and role are optional. Packet bytes from the desktop map stay on the machine.
+
+![The gate. Company is required. Name and role are optional.](docs/screenshots/gate.png)
+
+| Variable | What it does |
+| --- | --- |
+| `NEXT_PUBLIC_DOWNLOAD_URL` | Where `/download` sends the browser. Default is the GitHub release. |
+| `NEXT_PUBLIC_VISITS_URL` | Where the plate reports a visit. |
+| `SALONTECH_DOWNLOADS_URL` | Where `/download` reports a download. |
+| `DOWNLOADS_SECRET` | Optional header on that download report. Never commit it. |
+
 ## License
 
 [MIT](LICENSE). Copyright © 2026 Pulse contributors.
-
-The work in this repository was written as a collaboration between Claude and Cursor.
