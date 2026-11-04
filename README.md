@@ -36,11 +36,11 @@ That is why the map is not a web demo.
 
 ## Install on Windows
 
-1. Download [Pulse-Setup-0.1.2.exe](https://github.com/spookyambassador98/pulse/releases/latest/download/Pulse-Setup-0.1.2.exe). Free. About 179 MB. No account.
+1. Download [Pulse-Setup-0.1.2.exe](https://github.com/spookyambassador98/pulse/releases/latest/download/Pulse-Setup-0.1.2.exe). Free. About 171 MB. No account.
 2. SmartScreen will likely say “Windows protected your PC”. The installer is not code-signed. Open **More info**, then **Run anyway**. That is an unknown publisher, not a malware verdict.
 3. Install [Npcap](https://npcap.com/#download) if you want live impulses on the wires. Without it, the map can still list connections and stay quiet on the wire.
 4. Open Pulse and choose **Start watching**. Windows may ask for administrator. Accept if you want process paths and the cut. Decline and the map still runs, limited. Pulse does not install a driver.
-5. Check the file if you want to. SHA-256 `a7862737be174f6bfd0a494904655d4757f967be5b4c5fdd0fe2a4319fcad8c5`.
+5. Check the file if you want to. SHA-256 `9566124d55b57d643c1f80c43b7dbf22d597b31b478c9c8d8b239edecfe63c7f`.
 
 ![What Windows will ask, and why.](docs/screenshots/windows.png)
 

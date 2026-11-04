@@ -90,7 +90,7 @@ export function DownloadLanding() {
               <span className="release-plate-file">{PULSE_SETUP_NAME}</span>
             </a>
             <p className="release-fine">
-              Free. ~179 MB. No account. Npcap for live impulses. Administrator
+              Free. ~171 MB. No account. Npcap for live impulses. Administrator
               only if you want process paths and the cut switch.
             </p>
             <p className="release-hash">SHA-256 {PULSE_SHA256}</p>
