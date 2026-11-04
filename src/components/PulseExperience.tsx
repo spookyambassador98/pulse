@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { PulseDesktopShell } from "./PulseDesktopShell";
 import { DownloadLanding } from "./DownloadLanding";
 import { CompanyGate } from "./CompanyGate";
@@ -8,7 +8,7 @@ import { VisitTracker } from "./VisitTracker";
 import { useIsPulseDesktop } from "@/lib/pulse/useNetworkPulses";
 import { isGateOpen } from "@/lib/visitBeacon";
 
-export function PulseExperience() {
+export function PulseExperience({ children }: { children?: ReactNode }) {
   const isDesktop = useIsPulseDesktop();
   const [phase, setPhase] = useState<"wait" | "gate" | "app">("wait");
 
@@ -34,7 +34,7 @@ export function PulseExperience() {
   return (
     <>
       <VisitTracker />
-      <DownloadLanding />
+      <DownloadLanding tally={children} />
     </>
   );
 }

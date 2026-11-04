@@ -106,6 +106,8 @@ The public site stays shut until a company is named. Name and role are optional.
 | `NEXT_PUBLIC_VISITS_URL` | Where the plate reports a visit. |
 | `SALONTECH_DOWNLOADS_URL` | Where `/download` reports a download. |
 | `DOWNLOADS_SECRET` | Optional header on that download report. Never commit it. |
+| `PULSE_STATS_IP` | Public IPv4/IPv6 that may see the installer-count plate. Others get no plate and no number. Server-only. |
+| `PULSE_STATS_IPS` | Optional comma-separated allowlist, same plate. |
 
 ## License
 

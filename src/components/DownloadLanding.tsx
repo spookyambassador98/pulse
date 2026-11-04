@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { PULSE_GITHUB, PULSE_NPCAP, PULSE_SETUP_NAME, PULSE_SHA256, PULSE_VERSION } from "@/lib/pulse/download";
 
 const TRACES = [
@@ -66,7 +67,7 @@ function EtchedBoard() {
   );
 }
 
-export function DownloadLanding() {
+export function DownloadLanding({ tally }: { tally?: ReactNode }) {
   return (
     <div className="release-root">
       <header className="release-top">
@@ -94,6 +95,7 @@ export function DownloadLanding() {
               only if you want process paths and the cut switch.
             </p>
             <p className="release-hash">SHA-256 {PULSE_SHA256}</p>
+            {tally}
           </div>
           <EtchedBoard />
         </section>
