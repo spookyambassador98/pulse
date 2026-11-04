@@ -60,4 +60,14 @@ contextBridge.exposeInMainWorld("pulseDesktop", {
   revealPath(filePath) {
     return ipcRenderer.invoke("reveal-path", filePath);
   },
+
+  checkAndInstallUpdate() {
+    return ipcRenderer.invoke("check-and-install-update");
+  },
+
+  onUpdateStatus(callback) {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on("update-status", handler);
+    return () => ipcRenderer.removeListener("update-status", handler);
+  },
 });

@@ -4,9 +4,17 @@ import { useCallback, useEffect, useState } from "react";
 import { ConsentGate } from "./ConsentGate";
 import { LiveNeuronNetwork } from "./LiveNeuronNetwork";
 import { ShaderField } from "./ShaderField";
+import { PULSE_VERSION } from "@/lib/pulse/download";
 import { useLiveSession } from "@/lib/pulse/useLiveSession";
 
 type Stage = "consent" | "connecting" | "live";
+type UpdatePhase = "idle" | "checking" | "download" | "install" | "current" | "error";
+
+interface UpdateStatus {
+  phase: UpdatePhase;
+  percent?: number;
+  message?: string;
+}
 
 function desktopBridge() {
   if (typeof window === "undefined") return null;
@@ -17,6 +25,15 @@ function desktopBridge() {
         getPrivilege?: () => Promise<{ elevated: boolean }>;
         requestElevation?: () => Promise<{ elevated: boolean; relaunching?: boolean; reason?: string }>;
         consumeWatchIntent?: () => Promise<boolean>;
+        checkAndInstallUpdate?: () => Promise<{
+          ok: boolean;
+          upToDate?: boolean;
+          installing?: boolean;
+          current?: string;
+          latest?: string;
+          reason?: string;
+        }>;
+        onUpdateStatus?: (cb: (status: UpdateStatus) => void) => () => void;
       };
     }
   ).pulseDesktop;
@@ -29,7 +46,14 @@ export function PulseDesktopShell() {
   const [elevated, setElevated] = useState(false);
   const [elevating, setElevating] = useState(false);
   const [elevationError, setElevationError] = useState<string | null>(null);
+  const [updatePhase, setUpdatePhase] = useState<UpdatePhase>("idle");
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const { data } = useLiveSession(stage === "live");
+  const updateBusy = updatePhase === "checking" || updatePhase === "download" || updatePhase === "install";
+
+  useEffect(() => {
+    document.title = "Pulse";
+  }, []);
 
   useEffect(() => {
     const bridge = desktopBridge();
@@ -42,10 +66,38 @@ export function PulseDesktopShell() {
     })().catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const bridge = desktopBridge();
+    if (!bridge?.onUpdateStatus) return;
+    return bridge.onUpdateStatus((status) => {
+      if (status.phase) setUpdatePhase(status.phase);
+      setUpdateMessage(status.message || null);
+    });
+  }, []);
+
+  const checkForUpdates = useCallback(async () => {
+    const bridge = desktopBridge();
+    if (!bridge?.checkAndInstallUpdate) {
+      setUpdatePhase("error");
+      setUpdateMessage("Updates run in the installed Pulse app, not in a browser tab.");
+      return;
+    }
+    setUpdatePhase("checking");
+    setUpdateMessage("Checking GitHub for a newer installer…");
+    try {
+      await bridge.checkAndInstallUpdate();
+    } catch {
+      setUpdatePhase("error");
+      setUpdateMessage("Could not reach GitHub. Try again.");
+    }
+  }, []);
+
   const startWatching = useCallback(async () => {
     const bridge = desktopBridge();
     setElevationError(null);
-    if (bridge?.requestElevation && !elevated) {
+    const skipElevation =
+      typeof window !== "undefined" && new URLSearchParams(window.location.search).has("shots");
+    if (bridge?.requestElevation && !elevated && !skipElevation) {
       setElevating(true);
       try {
         const res = await bridge.requestElevation();
@@ -127,20 +179,47 @@ export function PulseDesktopShell() {
               </div>
             </div>
 
-            {stage === "live" && (
-              <div className="flex items-center gap-4 font-mono text-[0.62rem] uppercase tracking-[0.1em]">
-                <span className="text-signal flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse" />
-                  Live · {(elapsedDs / 10).toFixed(1)}s
-                </span>
-                <span className={elevated ? "text-signal" : "text-ink-dim"}>
-                  {elevated ? "Administrator" : "Limited"}
-                </span>
-                <span className="text-ink-dim hidden sm:inline">
-                  TTFB {data?.ttfbMs != null ? `${data.ttfbMs}ms` : "—"}
-                </span>
+            <div className="flex items-center gap-4 min-w-0">
+              {stage === "live" && (
+                <div className="hidden lg:flex items-center gap-4 font-mono text-[0.62rem] uppercase tracking-[0.1em]">
+                  <span className="text-signal flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-signal animate-pulse" />
+                    Live · {(elapsedDs / 10).toFixed(1)}s
+                  </span>
+                  <span className={elevated ? "text-signal" : "text-ink-dim"}>
+                    {elevated ? "Administrator" : "Limited"}
+                  </span>
+                  <span className="text-ink-dim hidden xl:inline">
+                    TTFB {data?.ttfbMs != null ? `${data.ttfbMs}ms` : "—"}
+                  </span>
+                </div>
+              )}
+              <div className="pulse-update">
+                <button
+                  type="button"
+                  className="pulse-update-btn"
+                  disabled={updateBusy}
+                  onClick={checkForUpdates}
+                >
+                  {updatePhase === "checking"
+                    ? "Checking…"
+                    : updatePhase === "download"
+                      ? "Downloading…"
+                      : updatePhase === "install"
+                        ? "Installing…"
+                        : "Check for updates"}
+                </button>
+                {updateMessage && (
+                  <span
+                    className={`pulse-update-note hidden sm:inline ${
+                      updatePhase === "error" ? "is-alert" : updatePhase === "current" || updatePhase === "install" ? "is-signal" : ""
+                    }`}
+                  >
+                    {updateMessage}
+                  </span>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </header>
       )}
@@ -178,7 +257,7 @@ export function PulseDesktopShell() {
 
       {!immersive && (
         <footer className="relative z-10 shrink-0 border-t border-line px-4 py-1.5 font-mono text-[0.58rem] text-ink-dim uppercase tracking-[0.1em] flex justify-between">
-          <span>Pulse v0.1.0</span>
+          <span>Pulse v{PULSE_VERSION}</span>
           <span className="hidden sm:inline">Local only · nothing leaves this device</span>
         </footer>
       )}

@@ -1,11 +1,11 @@
-/** SalonTech (Ops Hub) — центр управления, куда пишутся визиты. */
+/** SalonTech (Ops Hub) — the desk that stores Pulse visits. */
 const VISITS_URL =
   process.env.NEXT_PUBLIC_VISITS_URL || "https://salontech-mu.vercel.app/api/visits";
 
 export const VISIT_COMPANY_KEY = "salon-visit-company";
 export const VISIT_NAME_KEY = "salon-visit-name";
 export const VISIT_ROLE_KEY = "salon-visit-role";
-/** Cookie, по которой /download понимает, какая компания скачала. */
+/** Cookie the download route uses to attribute the company. */
 export const VISIT_COOKIE = "pulse_visit";
 export const VISIT_VID_KEY = "salon-visit-vid";
 export const VISIT_MODE_KEY = "salon-visit-mode";

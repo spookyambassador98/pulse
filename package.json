@@ -1,6 +1,6 @@
 {
   "name": "pulse",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pulse — a live, neuron-style visualization of your device's real network activity.",
   "author": "Dr.",
   "license": "MIT",

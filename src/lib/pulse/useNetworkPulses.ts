@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { buildDemoConnections, buildDemoEvents, DEMO_CAPTURE } from "./demoNetwork";
+import { isShotsMode } from "./shotsMode";
 
 // Real per-request network activity, turned into discrete "packet" events —
 // one for the request leaving your device, one for the response coming
@@ -219,6 +221,25 @@ export function useNetworkPulses(active: boolean) {
     [nextId]
   );
 
+  // Photographs: canned destinations only. Never the OS table, never this
+  // machine's IP, MAC, LAN, or a user folder in a process path.
+  useEffect(() => {
+    if (!active || !isShotsMode()) return;
+    const now = performance.now();
+    setElevated(true);
+    setCapture(DEMO_CAPTURE);
+    captureActiveRef.current = true;
+    setConnections(buildDemoConnections(now));
+    setEvents(buildDemoEvents(now));
+    const id = window.setInterval(() => {
+      const t = performance.now();
+      setConnections((prev) => prev.map((c) => ({ ...c, lastActivityMs: t })));
+      pushEvent({ host: "google.com", kind: "out", ok: true, atMs: t, label: "DATA · 256B · :443" });
+      pushEvent({ host: "cloudflare.com", kind: "in", ok: true, atMs: t, label: "ACK · 40B · :443" });
+    }, 1200);
+    return () => window.clearInterval(id);
+  }, [active, pushEvent]);
+
   const upsertConnection = useCallback(
     (params: {
       host: string;
@@ -317,7 +338,7 @@ export function useNetworkPulses(active: boolean) {
   // snapshot fires an "out" pulse (its SYN); one that's still present
   // fires an "in" pulse (still alive) so the diagram stays visibly live.
   useEffect(() => {
-    if (!active) return;
+    if (!active || isShotsMode()) return;
     const bridge = getDesktopBridge();
     if (!bridge) return;
 
@@ -395,7 +416,7 @@ export function useNetworkPulses(active: boolean) {
   // are available: individual decoded TCP packets straight off the wire —
   // real flags, real byte length, no polling interval smoothing it over.
   useEffect(() => {
-    if (!active) return;
+    if (!active || isShotsMode()) return;
     const bridge = getDesktopBridge();
     if (!bridge) return;
 
@@ -443,7 +464,7 @@ export function useNetworkPulses(active: boolean) {
   // callback, so every setState call below happens inside a callback
   // rather than the effect body itself.
   useEffect(() => {
-    if (!active || getDesktopBridge()) return;
+    if (!active || isShotsMode() || getDesktopBridge()) return;
 
     // The document itself isn't a "resource" entry — seed it via a deferred
     // callback (matching the pattern below) rather than calling setState
@@ -528,6 +549,17 @@ export function useNetworkPulses(active: boolean) {
       }
 
       const { host, port } = target;
+      if (isShotsMode()) {
+        const t0 = performance.now();
+        setConnectingHost(host);
+        upsertConnection({ host, ok: true, manual: true, name: host });
+        pushEvent({ host, kind: "out", ok: true, atMs: t0, label: `SYN → :${port ?? 443}` });
+        window.setTimeout(() => {
+          pushEvent({ host, kind: "in", ok: true, atMs: performance.now(), durationMs: 42, label: "SYN-ACK · 42ms" });
+          setConnectingHost(null);
+        }, 400);
+        return;
+      }
       const bridge = getDesktopBridge();
 
       manualCooldown.current.set(host, performance.now() + 5000);

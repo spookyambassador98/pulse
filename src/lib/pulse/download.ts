@@ -1,7 +1,7 @@
-export const PULSE_VERSION = "0.1.0";
+export const PULSE_VERSION = "0.1.1";
 export const PULSE_SETUP_NAME = `Pulse-Setup-${PULSE_VERSION}.exe`;
 export const PULSE_SHA256 =
-  "BABD0C163B13272B0554DD563AF73B9C3978988093AA19EBF0E70FBAEC7E65B2";
+  "A7862737BE174F6BFD0A494904655D4757F967BE5B4C5FDD0FE2A4319FCAD8C5";
 export const PULSE_GITHUB = "https://github.com/spookyambassador98/pulse";
 export const PULSE_NPCAP = "https://npcap.com/#download";
 

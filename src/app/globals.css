@@ -226,6 +226,63 @@ body {
   animation: neuron-node-in 0.5s var(--ease-out) forwards;
 }
 
+.pulse-update {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  max-width: min(34rem, 58vw);
+}
+
+.pulse-update-btn {
+  appearance: none;
+  flex-shrink: 0;
+  border: 1px solid var(--line-strong);
+  background:
+    linear-gradient(180deg, rgba(186, 255, 41, 0.08) 0%, rgba(11, 13, 18, 0.4) 100%),
+    var(--bg-raised);
+  color: var(--signal);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.42rem 0.78rem;
+  white-space: nowrap;
+  transition:
+    border-color 0.25s var(--ease-out),
+    color 0.25s var(--ease-out),
+    background 0.25s var(--ease-out);
+}
+
+.pulse-update-btn:hover:not(:disabled) {
+  border-color: var(--signal);
+}
+
+.pulse-update-btn:disabled {
+  opacity: 0.72;
+  cursor: default;
+}
+
+.pulse-update-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.pulse-update-note.is-signal {
+  color: var(--signal);
+}
+
+.pulse-update-note.is-alert {
+  color: var(--alert);
+}
+
 .neuron-map-stage {
   cursor: grab;
   touch-action: none;

@@ -3,7 +3,7 @@ import { PULSE_DOWNLOAD_URL } from "@/lib/pulse/download";
 
 export const dynamic = "force-dynamic";
 
-/** Счётчик скачиваний живёт в SalonTech. Здесь его никто не видит. */
+/** Download counts live in SalonTech. Nothing here is shown to the visitor. */
 const DOWNLOADS_URL =
   process.env.SALONTECH_DOWNLOADS_URL || "https://salontech-mu.vercel.app/api/downloads";
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const ua = req.headers.get("user-agent") || "";
 
   if (!isBot(ua)) {
-    // cookie ставит гейт: "<vid>|<company>"
+    // The gate writes this cookie: "<vid>|<company>"
     const raw = req.cookies.get("pulse_visit")?.value || "";
     let vid: string | null = null;
     let company: string | null = null;
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       vid = v || null;
       company = rest.join("|") || null;
     } catch {
-      /* битая cookie — пишем без компании */
+      /* Broken cookie — record the download without a company. */
     }
     const fwd = req.headers.get("x-forwarded-for") || "";
 
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
         cache: "no-store",
       });
     } catch {
-      /* счётчик не должен ломать скачивание */
+      /* A failed counter must not block the installer download. */
     } finally {
       clearTimeout(timer);
     }

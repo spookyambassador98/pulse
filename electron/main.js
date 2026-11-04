@@ -40,6 +40,7 @@ const { startCapture, isAvailable: captureAvailable } = require("./capture");
 const { cachedName, requestLookup, resolvePeer } = require("./peerNames");
 const { isAdmin, relaunchElevated } = require("./privilege");
 const netControl = require("./netControl");
+const updater = require("./updater");
 let activeCapture = null;
 // Capture starts once at boot, before the renderer has opened the monitor
 // (and therefore before it's subscribed to the "capture-status" push). Cache
@@ -166,10 +167,21 @@ async function createWindow() {
   });
 
   win.once("ready-to-show", () => win.show());
+  win.on("page-title-updated", (event) => {
+    event.preventDefault();
+    win.setTitle("Pulse");
+  });
   win.on("focus", () => {
     poll();
   });
-  await win.loadURL(`http://127.0.0.1:${PORT}`);
+  const shots = process.argv.includes("--pulse-shots");
+  await win.loadURL(`http://127.0.0.1:${PORT}${shots ? "/?shots=1" : ""}`);
+  if (shots) {
+    const { runShots } = require("./shots");
+    runShots(win)
+      .then(() => logLine("screenshots written to docs/screenshots"))
+      .catch((err) => logLine(`shots failed: ${err.stack || err}`));
+  }
 }
 
 app.on("window-all-closed", () => {
@@ -541,3 +553,61 @@ ipcMain.handle("toggle-node", async (_evt, ip, enabled) => {
 ipcMain.handle("open-destination", async (_evt, href) => netControl.openHref(href));
 
 ipcMain.handle("reveal-path", async (_evt, filePath) => netControl.revealPath(filePath));
+
+let updateBusy = false;
+
+function emitUpdate(payload) {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send("update-status", payload);
+}
+
+ipcMain.handle("check-and-install-update", async () => {
+  if (updateBusy) return { ok: false, reason: "busy" };
+  updateBusy = true;
+  try {
+    emitUpdate({ phase: "checking", message: "Checking GitHub for a newer installer…" });
+    const info = await updater.checkLatest();
+    if (info.upToDate) {
+      emitUpdate({
+        phase: "current",
+        message: `Pulse ${info.current} is current.`,
+      });
+      return { ok: true, upToDate: true, current: info.current, latest: info.latest };
+    }
+    if (!info.url) {
+      emitUpdate({
+        phase: "error",
+        message: "The latest GitHub release has no Windows installer.",
+      });
+      return { ok: false, reason: "no-asset" };
+    }
+    emitUpdate({
+      phase: "download",
+      percent: 0,
+      message: `Downloading Pulse ${info.latest}…`,
+    });
+    logLine(`update download: ${info.latest} ${info.url}`);
+    const dest = await updater.downloadInstaller(info, (percent) => {
+      emitUpdate({
+        phase: "download",
+        percent,
+        message: `Downloading Pulse ${info.latest}… ${Math.round(percent * 100)}%`,
+      });
+    });
+    emitUpdate({
+      phase: "install",
+      message: "Installing — Pulse will close, then the new build will start.",
+    });
+    logLine(`update launch: ${dest}`);
+    updater.launchInstaller(dest);
+    setTimeout(() => app.quit(), 700);
+    return { ok: true, installing: true, latest: info.latest };
+  } catch (err) {
+    const message = String(err && err.message ? err.message : err);
+    logLine(`update failed: ${message}`);
+    emitUpdate({ phase: "error", message: `Update failed: ${message}` });
+    return { ok: false, reason: message };
+  } finally {
+    updateBusy = false;
+  }
+});
