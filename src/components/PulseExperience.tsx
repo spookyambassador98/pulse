@@ -20,8 +20,16 @@ export function PulseExperience() {
     setPhase(isGateOpen() ? "app" : "gate");
   }, [isDesktop]);
 
+  // First paint matches the server (blank wait). Branching on isDesktop
+  // before mount hydrates the Electron window into an empty screen.
+  if (phase === "wait") {
+    return (
+      <div className="min-h-screen bg-bg flex items-center justify-center">
+        <span className="w-2 h-2 rounded-full bg-signal animate-pulse" aria-hidden="true" />
+      </div>
+    );
+  }
   if (isDesktop) return <PulseDesktopShell />;
-  if (phase === "wait") return <div className="min-h-screen bg-bg" />;
   if (phase === "gate") return <CompanyGate onUnlock={() => setPhase("app")} />;
   return (
     <>

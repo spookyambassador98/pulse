@@ -62,9 +62,24 @@ export function PulseDesktopShell() {
       const priv = await bridge.getPrivilege?.();
       setElevated(Boolean(priv?.elevated));
       const resume = await bridge.consumeWatchIntent?.();
-      if (resume) setStage("connecting");
+      let watching = false;
+      try {
+        watching = sessionStorage.getItem("pulse-watching") === "1";
+      } catch {
+        watching = false;
+      }
+      if (resume || watching) setStage("connecting");
     })().catch(() => {});
   }, []);
+
+  useEffect(() => {
+    try {
+      if (stage === "live") sessionStorage.setItem("pulse-watching", "1");
+      if (stage === "consent") sessionStorage.removeItem("pulse-watching");
+    } catch {
+      /* private mode */
+    }
+  }, [stage]);
 
   useEffect(() => {
     const bridge = desktopBridge();

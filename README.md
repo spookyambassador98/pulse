@@ -4,7 +4,7 @@ Your Windows machine, drawn as a nervous system.
 
 Task Manager will give you a list. Pulse gives you the shape. You sit in the middle. Every destination takes a seat and keeps it. Real packets travel the wires — not a screensaver pretending to be traffic.
 
-[Live site](https://pulse-beryl-one.vercel.app) · [Installer](https://github.com/spookyambassador98/pulse/releases/latest/download/Pulse-Setup-0.1.1.exe) · [MIT](LICENSE)
+[Live site](https://pulse-beryl-one.vercel.app) · [Installer](https://github.com/spookyambassador98/pulse/releases/latest/download/Pulse-Setup-0.1.2.exe) · [MIT](LICENSE)
 
 ![The Pulse window. The device in the center, live destinations around it.](docs/screenshots/monitor.png)
 
@@ -36,7 +36,7 @@ That is why the map is not a web demo.
 
 ## Install on Windows
 
-1. Download [Pulse-Setup-0.1.1.exe](https://github.com/spookyambassador98/pulse/releases/latest/download/Pulse-Setup-0.1.1.exe). Free. About 179 MB. No account.
+1. Download [Pulse-Setup-0.1.2.exe](https://github.com/spookyambassador98/pulse/releases/latest/download/Pulse-Setup-0.1.2.exe). Free. About 179 MB. No account.
 2. SmartScreen will likely say “Windows protected your PC”. The installer is not code-signed. Open **More info**, then **Run anyway**. That is an unknown publisher, not a malware verdict.
 3. Install [Npcap](https://npcap.com/#download) if you want live impulses on the wires. Without it, the map can still list connections and stay quiet on the wire.
 4. Open Pulse and choose **Start watching**. Windows may ask for administrator. Accept if you want process paths and the cut. Decline and the map still runs, limited. Pulse does not install a driver.

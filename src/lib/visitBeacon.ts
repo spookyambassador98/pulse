@@ -17,7 +17,8 @@ export const VISIT_PROJECT = "pulse" as const;
 
 export function isGateOpen() {
   try {
-    return sessionStorage.getItem(GATE_KEY) === "1";
+    if (sessionStorage.getItem(GATE_KEY) === "1") return true;
+    return localStorage.getItem(GATE_KEY) === "1";
   } catch {
     return false;
   }
@@ -56,6 +57,7 @@ export function rememberCompanyVisit(company: string, person: { name?: string; r
   sessionStorage.setItem(VISIT_NAME_KEY, who);
   sessionStorage.setItem(VISIT_ROLE_KEY, role);
   try {
+    localStorage.setItem(GATE_KEY, "1");
     localStorage.setItem(VISIT_COMPANY_KEY, name);
     localStorage.setItem(VISIT_NAME_KEY, who);
     localStorage.setItem(VISIT_ROLE_KEY, role);

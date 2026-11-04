@@ -103,6 +103,25 @@ interface PulseDesktopBridge {
 
 const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 
+function hashStr(s: string) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** First pulse delay so a full table does not SYN in one frame. */
+function hostPhaseMs(host: string) {
+  return hashStr(host) % 1700;
+}
+
+/** Independent keepalive so two processes never share a beat. */
+function hostCadenceMs(host: string) {
+  return 2200 + (hashStr(`${host}:cadence`) % 4000);
+}
+
 function nameRank(n?: string | null) {
   if (!n) return 0;
   if (IPV4_RE.test(n)) return 1;
@@ -204,6 +223,19 @@ export function useNetworkPulses(active: boolean) {
   // Manual connect_to uses a hostname; the OS table and packet capture speak
   // IPs. This alias keeps them as one synapse instead of two ghosts.
   const hostByIp = useRef<Map<string, string>>(new Map());
+  const fakePulseTimers = useRef(new Map<string, number>());
+
+  const clearFakePulses = useCallback((host?: string) => {
+    const map = fakePulseTimers.current;
+    if (host) {
+      const t = map.get(host);
+      if (t) window.clearTimeout(t);
+      map.delete(host);
+      return;
+    }
+    for (const t of map.values()) window.clearTimeout(t);
+    map.clear();
+  }, []);
 
   const nextId = useCallback(() => `pk-${idRef.current++}`, []);
 
@@ -254,8 +286,11 @@ export function useNetworkPulses(active: boolean) {
       port?: number;
       blocked?: boolean;
       href?: string | null;
+      /** False for a connection-table refresh — that is not a packet. */
+      touch?: boolean;
     }) => {
       const { host, ok, manual, meta, name, ip, pid, process, processPath, port, blocked, href } = params;
+      const touch = params.touch !== false;
       setConnections((prev) => {
         const idx = prev.findIndex((c) => c.host === host);
         const now = performance.now();
@@ -284,8 +319,8 @@ export function useNetworkPulses(active: boolean) {
         next[idx] = {
           ...next[idx],
           variant: blocked ? "alert" : ok ? next[idx].variant : "alert",
-          requestCount: next[idx].requestCount + 1,
-          lastActivityMs: now,
+          requestCount: touch ? next[idx].requestCount + 1 : next[idx].requestCount,
+          lastActivityMs: touch ? now : next[idx].lastActivityMs,
           manual: next[idx].manual || manual,
           meta: meta ?? next[idx].meta,
           name: pickName(next[idx].name, name) ?? next[idx].name,
@@ -332,17 +367,44 @@ export function useNetworkPulses(active: boolean) {
     [patchConnectionName]
   );
 
-  // Desktop shell: the main process pushes real, system-wide connection
-  // snapshots (every established connection on the machine, from any
-  // process) every ~1.2s. A remote address that's new since the last
-  // snapshot fires an "out" pulse (its SYN); one that's still present
-  // fires an "in" pulse (still alive) so the diagram stays visibly live.
+  // Desktop shell: the main process pushes the OS connection table every
+  // ~1.2s. That list is real. It is not a packet clock — Chrome and Spotify
+  // do not SYN on the same tick. New remotes get a staggered SYN. Quiet
+  // sockets stay dim until a real packet, or (without Npcap) a per-host
+  // keepalive with its own cadence.
   useEffect(() => {
     if (!active || isShotsMode()) return;
     const bridge = getDesktopBridge();
     if (!bridge) return;
 
     const lastSeen = new Map<string, number>();
+    let cancelled = false;
+
+    const armKeepalive = (host: string, port: number, process: string | null) => {
+      if (cancelled || captureActiveRef.current) return;
+      if (fakePulseTimers.current.has(host)) return;
+      const delay = hostCadenceMs(host) + Math.floor(Math.random() * 320);
+      const t = window.setTimeout(() => {
+        fakePulseTimers.current.delete(host);
+        if (cancelled || captureActiveRef.current) return;
+        const still = connectionsRef.current.some((c) => c.host === host && !c.blocked);
+        if (!still) return;
+        const now = performance.now();
+        const inbound = hashStr(`${host}:${Math.floor(now / 700)}`) % 2 === 0;
+        pushEvent({
+          host,
+          kind: inbound ? "in" : "out",
+          ok: true,
+          atMs: now,
+          label: inbound
+            ? `ACK · :${port}${process ? ` · ${process}` : ""}`
+            : `PSH · :${port}${process ? ` · ${process}` : ""}`,
+        });
+        upsertConnection({ host, ok: true, manual: false, touch: true });
+        armKeepalive(host, port, process);
+      }, delay);
+      fakePulseTimers.current.set(host, t);
+    };
 
     getDesktopBridge()
       ?.getPrivilege()
@@ -355,12 +417,13 @@ export function useNetworkPulses(active: boolean) {
       if (typeof priv === "boolean") setElevated(priv);
       const now = performance.now();
       const activeRemotes = new Set(conns.map((c) => c.remote));
+      const activeHosts = new Set<string>();
 
       for (const c of conns) {
-        const key = `${c.remote}:${c.port}`;
-        const isNew = !lastSeen.has(key);
-        lastSeen.set(key, now);
+        const isNew = !lastSeen.has(c.remote);
+        lastSeen.set(c.remote, now);
         const host = hostByIp.current.get(c.remote) || c.remote;
+        activeHosts.add(host);
         const meta = c.process ? `${c.process}${c.pid ? ` (${c.pid})` : ""}` : undefined;
         upsertConnection({
           host,
@@ -375,29 +438,44 @@ export function useNetworkPulses(active: boolean) {
           port: c.port,
           blocked: Boolean(c.blocked),
           href: c.href || undefined,
+          touch: false,
         });
         resolveNameIfNeeded(c.remote);
-        if (captureActiveRef.current) continue;
-        if (c.blocked) continue;
-
-        pushEvent({
-          host,
-          kind: isNew ? "out" : "in",
-          ok: true,
-          atMs: now,
-          label: isNew
-            ? `SYN → :${c.port}${c.process ? ` · ${c.process}` : ""}`
-            : `${c.protocol.toUpperCase()} alive · :${c.port}`,
-        });
+        if (c.blocked || captureActiveRef.current) {
+          clearFakePulses(host);
+          continue;
+        }
+        if (isNew) {
+          if (fakePulseTimers.current.has(host)) continue;
+          const delay = hostPhaseMs(host);
+          const t = window.setTimeout(() => {
+            fakePulseTimers.current.delete(host);
+            if (cancelled || captureActiveRef.current) return;
+            if (!connectionsRef.current.some((row) => row.host === host && !row.blocked)) return;
+            pushEvent({
+              host,
+              kind: "out",
+              ok: true,
+              atMs: performance.now(),
+              label: `SYN → :${c.port}${c.process ? ` · ${c.process}` : ""}`,
+            });
+            upsertConnection({ host, ok: true, manual: false, touch: true });
+            armKeepalive(host, c.port, c.process);
+          }, delay);
+          fakePulseTimers.current.set(host, t);
+        } else {
+          armKeepalive(host, c.port, c.process);
+        }
       }
 
-      for (const key of [...lastSeen.keys()]) {
-        if (!activeRemotes.has(key.split(":")[0])) lastSeen.delete(key);
+      for (const ip of [...lastSeen.keys()]) {
+        if (!activeRemotes.has(ip)) lastSeen.delete(ip);
       }
 
-      // Drop only truly stale rows. Rebuilding the whole list from the OS
-      // snapshot used to wipe packet-capture hosts (and manual connects)
-      // between polls — that's the jitter: node gone, then back on a new slot.
+      for (const host of [...fakePulseTimers.current.keys()]) {
+        if (!activeHosts.has(host)) clearFakePulses(host);
+      }
+
       setConnections((prev) =>
         prev.filter((c) => {
           if (c.blocked) return true;
@@ -409,8 +487,12 @@ export function useNetworkPulses(active: boolean) {
       );
     });
 
-    return unsubscribe;
-  }, [active, pushEvent, upsertConnection, resolveNameIfNeeded]);
+    return () => {
+      cancelled = true;
+      clearFakePulses();
+      unsubscribe();
+    };
+  }, [active, pushEvent, upsertConnection, resolveNameIfNeeded, clearFakePulses]);
 
   // Real packet capture (WinPcap/Npcap), when the driver + native module
   // are available: individual decoded TCP packets straight off the wire —
@@ -426,11 +508,13 @@ export function useNetworkPulses(active: boolean) {
     bridge.getCaptureStatus().then((status) => {
       captureActiveRef.current = status.active;
       setCapture(status);
+      if (status.active) clearFakePulses();
     });
 
     const unsubStatus = bridge.onCaptureStatus((status) => {
       captureActiveRef.current = status.active;
       setCapture(status);
+      if (status.active) clearFakePulses();
     });
 
     const unsubPacket = bridge.onPacket((pkt) => {
@@ -456,7 +540,7 @@ export function useNetworkPulses(active: boolean) {
       unsubStatus();
       unsubPacket();
     };
-  }, [active, pushEvent, upsertConnection, resolveNameIfNeeded]);
+  }, [active, pushEvent, upsertConnection, resolveNameIfNeeded, clearFakePulses]);
 
   // Browser fallback: seed with whatever this page already loaded, then
   // watch for every new request in real time via PerformanceObserver.

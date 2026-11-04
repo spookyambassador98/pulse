@@ -703,7 +703,7 @@ function PacketDot({
   useEffect(() => {
     let killed = false;
     let tween: { kill: () => void } | null = null;
-    const startedAt = performance.now();
+    let lookingSince = 0;
 
     const tryStart = () => {
       if (killed) return;
@@ -714,7 +714,7 @@ function PacketDot({
       const path = pathRefs.current.get(event.host);
       const dot = dotRef.current;
       if (!path || !dot) {
-        if (performance.now() - startedAt > 1500) {
+        if (lookingSince && performance.now() - lookingSince > 1800) {
           onDone();
           return;
         }
@@ -722,7 +722,8 @@ function PacketDot({
         return;
       }
 
-      const duration = Math.min(1.4, Math.max(0.45, (event.durationMs ?? 500) / 1000));
+      const base = Math.min(1.45, Math.max(0.42, (event.durationMs ?? 520) / 1000));
+      const drift = (0.18 * ((event.host.length * 13 + event.id.length) % 7)) / 7;
       tween = gsap.to(dot, {
         motionPath: {
           path,
@@ -731,15 +732,20 @@ function PacketDot({
           start: event.kind === "out" ? 0 : 1,
           end: event.kind === "out" ? 1 : 0,
         },
-        duration,
+        duration: base + drift,
         ease: "sine.inOut",
         onComplete: onDone,
       });
     };
 
-    tryStart();
+    const wait = Math.max(0, event.atMs - performance.now());
+    const startTimer = window.setTimeout(() => {
+      lookingSince = performance.now();
+      tryStart();
+    }, wait);
     return () => {
       killed = true;
+      window.clearTimeout(startTimer);
       tween?.kill();
       onDone();
     };
