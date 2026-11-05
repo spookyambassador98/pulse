@@ -26,12 +26,19 @@ function allowedIps(): string[] {
     .filter(Boolean);
 }
 
-function requestIp(h: Headers): string {
+export function clientIpFromHeaders(h: Headers): string {
+  // x-vercel-forwarded-for is platform-set. Clients can prepend to
+  // x-forwarded-for, so the connecting hop is the last address.
   const vercel = h.get("x-vercel-forwarded-for") || "";
-  const fwd = h.get("x-forwarded-for") || "";
+  if (vercel) {
+    const parts = vercel.split(",").map((part) => part.trim()).filter(Boolean);
+    return normalizeIp(parts[parts.length - 1] || "");
+  }
   const real = h.get("x-real-ip") || "";
-  const first = (vercel || fwd).split(",")[0]?.trim() || real;
-  return normalizeIp(first);
+  if (real && !real.includes(",")) return normalizeIp(real);
+  const fwd = h.get("x-forwarded-for") || "";
+  const parts = fwd.split(",").map((part) => part.trim()).filter(Boolean);
+  return normalizeIp(parts[parts.length - 1] || "");
 }
 
 function isLoopback(ip: string): boolean {
@@ -43,12 +50,16 @@ function isLoopback(ip: string): boolean {
   );
 }
 
-export async function isOwnerRequest(): Promise<boolean> {
+export function isOwnerIp(ip: string): boolean {
   const allow = allowedIps();
-  const ip = requestIp(await headers());
-  if (ip && allow.includes(ip)) return true;
+  const n = normalizeIp(ip);
+  if (n && allow.includes(n)) return true;
   // Local preview only. Production never treats loopback as the desk.
-  return process.env.NODE_ENV !== "production" && isLoopback(ip);
+  return process.env.NODE_ENV !== "production" && isLoopback(n);
+}
+
+export async function isOwnerRequest(h?: Headers): Promise<boolean> {
+  return isOwnerIp(clientIpFromHeaders(h ?? (await headers())));
 }
 
 function githubRepo(): { owner: string; repo: string } | null {
@@ -68,7 +79,11 @@ type GithubRelease = {
   assets?: { name?: string; download_count?: number }[];
 };
 
+let githubCache: { at: number; value: { total: number; current: number } } | null = null;
+
 async function githubInstallerCounts(): Promise<{ total: number; current: number }> {
+  if (githubCache && Date.now() - githubCache.at < 60_000) return githubCache.value;
+
   const repo = githubRepo();
   if (!repo) return { total: 0, current: 0 };
 
@@ -84,7 +99,7 @@ async function githubInstallerCounts(): Promise<{ total: number; current: number
           ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
         },
         signal: ctrl.signal,
-        next: { revalidate: 60 },
+        cache: "no-store",
       },
     );
     if (!res.ok) return { total: 0, current: 0 };
@@ -103,7 +118,9 @@ async function githubInstallerCounts(): Promise<{ total: number; current: number
         if (name === setup) current = count;
       }
     }
-    return { total, current };
+    const value = { total, current };
+    githubCache = { at: Date.now(), value };
+    return value;
   } catch {
     return { total: 0, current: 0 };
   } finally {
@@ -145,8 +162,8 @@ async function siteDownloadCount(): Promise<number | null> {
 }
 
 /** Count is loaded only after the IP allowlist matches. Never call this from a client file. */
-export async function readOwnerDownloadStats(): Promise<OwnerDownloadStats | null> {
-  if (!(await isOwnerRequest())) return null;
+export async function readOwnerDownloadStats(h?: Headers): Promise<OwnerDownloadStats | null> {
+  if (!(await isOwnerRequest(h))) return null;
   const [github, site] = await Promise.all([githubInstallerCounts(), siteDownloadCount()]);
   return {
     total: github.total,
